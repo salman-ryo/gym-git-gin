@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"gymgit/backend/internal/middleware"
@@ -24,6 +25,7 @@ func NewAuthHandler(authService service.AuthService) *AuthHandler {
 func (h *AuthHandler) Bootstrap(c *gin.Context) {
 	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
 	if !exists {
+		log.Println("[Bootstrap] Missing authenticated user context")
 		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
 		return
 	}
@@ -34,6 +36,8 @@ func (h *AuthHandler) Bootstrap(c *gin.Context) {
 	avatarURL, _ := c.Get(middleware.ContextAvatarURLKey)
 	provider, _ := c.Get(middleware.ContextProviderKey)
 
+	log.Printf("[Bootstrap] Initiating bootstrap for authUserID=%s, email=%v, name=%v, provider=%v", authUserID, email, name, provider)
+
 	user, err := h.authService.BootstrapProfile(
 		c.Request.Context(),
 		authUserID,
@@ -43,10 +47,12 @@ func (h *AuthHandler) Bootstrap(c *gin.Context) {
 		provider.(string),
 	)
 	if err != nil {
+		log.Printf("[Bootstrap] Failed to bootstrap profile: %v", err)
 		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to bootstrap profile", []string{err.Error()})
 		return
 	}
 
+	log.Printf("[Bootstrap] Successfully bootstrapped profile for user=%s", user.ID)
 	models.SendSuccess(c, http.StatusOK, user, "Profile bootstrapped successfully")
 }
 
@@ -95,7 +101,10 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 }
 
 type UpdatePlanRequest struct {
-	PlanID string `json:"plan_id" binding:"required"`
+	PlanID      string   `json:"plan_id" binding:"required"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Categories  []string `json:"categories"`
 }
 
 // UpdatePlan updates the user's selected weekly plan
@@ -119,7 +128,7 @@ func (h *AuthHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.UpdatePlan(c.Request.Context(), user.ID, req.PlanID); err != nil {
+	if err := h.authService.UpdatePlan(c.Request.Context(), user.ID, req.PlanID, req.Name, req.Description, req.Categories); err != nil {
 		models.SendError(c, http.StatusBadRequest, "UPDATE_FAILED", err.Error(), nil)
 		return
 	}

@@ -12,7 +12,7 @@ import (
 type AuthService interface {
 	BootstrapProfile(ctx context.Context, authUserID uuid.UUID, email, name, avatarURL, provider string) (*models.User, error)
 	GetProfile(ctx context.Context, userID uuid.UUID) (*models.User, *models.WeeklyPlan, error)
-	UpdatePlan(ctx context.Context, userID uuid.UUID, planID string) error
+	UpdatePlan(ctx context.Context, userID uuid.UUID, planID string, customName string, customDesc string, categories []string) error
 }
 
 // PlanService defines business logic for weekly plans

@@ -41,11 +41,13 @@ func TestAuthMiddleware_ValidBearerHeader(t *testing.T) {
 		},
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   testUUID.String(),
+			Audience:  jwt.ClaimStrings{"authenticated"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(secret))
+	key, _ := getHMACKey(secret)
+	tokenString, _ := token.SignedString(key)
 
 	router := gin.New()
 	router.Use(AuthMiddleware(secret))
@@ -78,11 +80,13 @@ func TestAuthMiddleware_CookieIgnored(t *testing.T) {
 		Email: "cookie@example.com",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   testUUID.String(),
+			Audience:  jwt.ClaimStrings{"authenticated"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString([]byte(secret))
+	key, _ := getHMACKey(secret)
+	tokenString, _ := token.SignedString(key)
 
 	router := gin.New()
 	router.Use(AuthMiddleware(secret))

@@ -20,8 +20,9 @@ func NewPlanRepository(db *sql.DB) PlanRepository {
 
 func (r *postgresPlanRepository) GetAll(ctx context.Context) ([]models.WeeklyPlan, error) {
 	query := `
-		SELECT id, name, description, categories, created_at, updated_at
+		SELECT id, name, description, categories, user_id, created_at, updated_at
 		FROM weekly_plans
+		WHERE user_id IS NULL
 		ORDER BY id ASC
 	`
 	rows, err := r.db.QueryContext(ctx, query)
@@ -34,7 +35,7 @@ func (r *postgresPlanRepository) GetAll(ctx context.Context) ([]models.WeeklyPla
 	for rows.Next() {
 		var p models.WeeklyPlan
 		var categoriesRaw []byte
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &categoriesRaw, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &categoriesRaw, &p.UserID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan weekly plan: %w", err)
 		}
 		if len(categoriesRaw) > 0 {
@@ -54,7 +55,7 @@ func (r *postgresPlanRepository) GetAll(ctx context.Context) ([]models.WeeklyPla
 
 func (r *postgresPlanRepository) GetByID(ctx context.Context, id string) (*models.WeeklyPlan, error) {
 	query := `
-		SELECT id, name, description, categories, created_at, updated_at
+		SELECT id, name, description, categories, user_id, created_at, updated_at
 		FROM weekly_plans
 		WHERE id = $1
 	`
@@ -65,6 +66,7 @@ func (r *postgresPlanRepository) GetByID(ctx context.Context, id string) (*model
 		&p.Name,
 		&p.Description,
 		&categoriesRaw,
+		&p.UserID,
 		&p.CreatedAt,
 		&p.UpdatedAt,
 	)
@@ -82,4 +84,26 @@ func (r *postgresPlanRepository) GetByID(ctx context.Context, id string) (*model
 		p.Categories = []string{}
 	}
 	return p, nil
+}
+
+func (r *postgresPlanRepository) Create(ctx context.Context, plan *models.WeeklyPlan) error {
+	query := `
+		INSERT INTO weekly_plans (id, name, description, categories, user_id)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			categories = EXCLUDED.categories,
+			updated_at = NOW()
+	`
+	categoriesRaw, err := json.Marshal(plan.Categories)
+	if err != nil {
+		return fmt.Errorf("failed to marshal categories: %w", err)
+	}
+
+	_, err = r.db.ExecContext(ctx, query, plan.ID, plan.Name, plan.Description, categoriesRaw, plan.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to save weekly plan: %w", err)
+	}
+	return nil
 }

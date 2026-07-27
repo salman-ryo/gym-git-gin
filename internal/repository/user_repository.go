@@ -131,3 +131,51 @@ func (r *postgresUserRepository) UpdateWeeklyPlan(ctx context.Context, userID uu
 	}
 	return nil
 }
+
+func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
+	query := `
+		SELECT id, auth_user_id, email, name, avatar_url, provider, weekly_plan_id, created_at, updated_at
+		FROM users
+		WHERE email = $1
+	`
+	u := &models.User{}
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&u.ID,
+		&u.AuthUserID,
+		&u.Email,
+		&u.Name,
+		&u.AvatarURL,
+		&u.Provider,
+		&u.WeeklyPlanID,
+		&u.CreatedAt,
+		&u.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to query user by email: %w", err)
+	}
+	return u, nil
+}
+
+func (r *postgresUserRepository) UpdateAuthUserID(ctx context.Context, id uuid.UUID, authUserID uuid.UUID) error {
+	query := `
+		UPDATE users
+		SET auth_user_id = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	result, err := r.db.ExecContext(ctx, query, authUserID, id)
+	if err != nil {
+		return fmt.Errorf("failed to update user auth_user_id: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found for id %s", id)
+	}
+	return nil
+}
