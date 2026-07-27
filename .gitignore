@@ -1,0 +1,28 @@
+# Binaries and executable files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+tmp/
+main
+
+# IDEs & System files
+.idea/
+.vscode/
+*.suo
+*.sw?
+.DS_Store
+
+# Air hot-reloading temporary artifacts and build logs
+tmp/
+build-errors.log
+
+# Dependency directories
+vendor/
+
+# Environment / Secret configuration files
+.env
+.env.*
+!.env.example
