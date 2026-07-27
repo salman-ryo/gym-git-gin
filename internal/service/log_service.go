@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"gymgit/backend/internal/models"
@@ -36,8 +37,8 @@ func (s *gymLogService) GetLogs(ctx context.Context, userID uuid.UUID, startDate
 }
 
 func (s *gymLogService) SaveLog(ctx context.Context, userID uuid.UUID, date string, hours float64, workoutType string, notes *string) (*models.GymLog, error) {
-	// Rule: If hours <= 0, delete the log for that date
-	if hours <= 0 {
+	// Rule: If hours <= 0 and workoutType is not a Rest day, delete the log for that date
+	if hours <= 0 && strings.ToLower(workoutType) != "rest" {
 		if err := s.logRepo.DeleteByDate(ctx, userID, date); err != nil {
 			return nil, fmt.Errorf("failed deleting log with zero hours: %w", err)
 		}
