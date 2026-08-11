@@ -93,3 +93,90 @@ func TestCalculatePowerScore(t *testing.T) {
 		t.Errorf("expected variety > 0, got %d", breakdown.Variety)
 	}
 }
+
+func TestCalculateScientificStreak(t *testing.T) {
+	loc := time.UTC
+	today := time.Date(2026, 8, 11, 0, 0, 0, 0, loc)
+
+	// Case 1: Logged on time (CreatedAt is same day as Date)
+	logs1 := []models.GymLog{
+		{
+			Date:       "2026-08-11",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 11, 10, 0, 0, 0, loc),
+			IsRestored: false,
+		},
+		{
+			Date:       "2026-08-10",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 10, 18, 0, 0, 0, loc),
+			IsRestored: false,
+		},
+	}
+	stats1 := CalculateScientificStreak(logs1, 3, 30, today)
+	if stats1.CurrentStreak != 2 {
+		t.Errorf("Case 1 (on-time): expected streak 2, got %d", stats1.CurrentStreak)
+	}
+
+	// Case 2: Past log created late (not restored)
+	// Log for 2026-08-10 created on 2026-08-11
+	logs2 := []models.GymLog{
+		{
+			Date:       "2026-08-11",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 11, 10, 0, 0, 0, loc),
+			IsRestored: false,
+		},
+		{
+			Date:       "2026-08-10",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 11, 12, 0, 0, 0, loc), // Late log! Created on Aug 11 for Aug 10
+			IsRestored: false,
+		},
+	}
+	stats2 := CalculateScientificStreak(logs2, 3, 30, today)
+	// Since 2026-08-10 was logged late and is NOT restored, it shouldn't count towards streak.
+	// So 2026-08-10 is treated as non-compliant, breaking the streak.
+	// 2026-08-11 is compliant, so streak should be 1.
+	if stats2.CurrentStreak != 1 {
+		t.Errorf("Case 2 (late, not restored): expected streak 1, got %d", stats2.CurrentStreak)
+	}
+
+	// Case 3: Past log created late but RESTORED (IsRestored = true)
+	logs3 := []models.GymLog{
+		{
+			Date:       "2026-08-11",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 11, 10, 0, 0, 0, loc),
+			IsRestored: false,
+		},
+		{
+			Date:       "2026-08-10",
+			Hours:      1.5,
+			CreatedAt:  time.Date(2026, 8, 11, 12, 0, 0, 0, loc), // Late log but IsRestored is true
+			IsRestored: true,
+		},
+	}
+	stats3 := CalculateScientificStreak(logs3, 3, 30, today)
+	if stats3.CurrentStreak != 2 {
+		t.Errorf("Case 3 (late, restored): expected streak 2, got %d", stats3.CurrentStreak)
+	}
+
+	// Case 4: CreatedAt is Zero (seed/mock data)
+	logs4 := []models.GymLog{
+		{
+			Date:       "2026-08-11",
+			Hours:      1.5,
+			IsRestored: false,
+		},
+		{
+			Date:       "2026-08-10",
+			Hours:      1.5,
+			IsRestored: false,
+		},
+	}
+	stats4 := CalculateScientificStreak(logs4, 3, 30, today)
+	if stats4.CurrentStreak != 2 {
+		t.Errorf("Case 4 (zero CreatedAt): expected streak 2, got %d", stats4.CurrentStreak)
+	}
+}

@@ -66,7 +66,11 @@ func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, days
 	logsMap := make(map[string]float64)
 	for _, l := range logs {
 		if l.Hours > 0 {
-			logsMap[l.Date] = l.Hours
+			// Only count towards streak if on-time, restored, or seed/mock data
+			isOnTime := l.CreatedAt.IsZero() || l.Date >= l.CreatedAt.In(today.Location()).Format("2006-01-02")
+			if l.IsRestored || isOnTime {
+				logsMap[l.Date] = l.Hours
+			}
 		}
 	}
 

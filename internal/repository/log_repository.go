@@ -25,7 +25,7 @@ func NewGymLogRepository(db *sql.DB) GymLogRepository {
 func (r *postgresGymLogRepository) GetLogs(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, workoutType *string) ([]models.GymLog, error) {
 	queryBuilder := strings.Builder{}
 	queryBuilder.WriteString(`
-		SELECT id, user_id, TO_CHAR(date, 'YYYY-MM-DD') as date, hours, workout_type, notes, created_at, updated_at
+		SELECT id, user_id, TO_CHAR(date, 'YYYY-MM-DD') as date, hours, workout_type, notes, is_restored, created_at, updated_at
 		FROM gym_logs
 		WHERE user_id = $1
 	`)
@@ -69,6 +69,7 @@ func (r *postgresGymLogRepository) GetLogs(ctx context.Context, userID uuid.UUID
 			&l.Hours,
 			&l.WorkoutType,
 			&l.Notes,
+			&l.IsRestored,
 			&l.CreatedAt,
 			&l.UpdatedAt,
 		); err != nil {
@@ -85,7 +86,7 @@ func (r *postgresGymLogRepository) GetLogs(ctx context.Context, userID uuid.UUID
 
 func (r *postgresGymLogRepository) GetByDate(ctx context.Context, userID uuid.UUID, date string) (*models.GymLog, error) {
 	query := `
-		SELECT id, user_id, TO_CHAR(date, 'YYYY-MM-DD') as date, hours, workout_type, notes, created_at, updated_at
+		SELECT id, user_id, TO_CHAR(date, 'YYYY-MM-DD') as date, hours, workout_type, notes, is_restored, created_at, updated_at
 		FROM gym_logs
 		WHERE user_id = $1 AND date = $2
 	`
@@ -97,6 +98,7 @@ func (r *postgresGymLogRepository) GetByDate(ctx context.Context, userID uuid.UU
 		&l.Hours,
 		&l.WorkoutType,
 		&l.Notes,
+		&l.IsRestored,
 		&l.CreatedAt,
 		&l.UpdatedAt,
 	)
@@ -115,12 +117,13 @@ func (r *postgresGymLogRepository) UpsertLog(ctx context.Context, log *models.Gy
 	}
 
 	query := `
-		INSERT INTO gym_logs (id, user_id, date, hours, workout_type, notes)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO gym_logs (id, user_id, date, hours, workout_type, notes, is_restored)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id, date) DO UPDATE SET
 			hours = EXCLUDED.hours,
 			workout_type = EXCLUDED.workout_type,
 			notes = EXCLUDED.notes,
+			is_restored = EXCLUDED.is_restored,
 			updated_at = NOW()
 		RETURNING id, created_at, updated_at
 	`
@@ -134,6 +137,7 @@ func (r *postgresGymLogRepository) UpsertLog(ctx context.Context, log *models.Gy
 		log.Hours,
 		log.WorkoutType,
 		log.Notes,
+		log.IsRestored,
 	).Scan(&log.ID, &log.CreatedAt, &log.UpdatedAt)
 
 	if err != nil {
@@ -166,8 +170,8 @@ func (r *postgresGymLogRepository) ResetDemoLogs(ctx context.Context, userID uui
 
 	// 2. Bulk insert demo logs
 	insertQuery := `
-		INSERT INTO gym_logs (id, user_id, date, hours, workout_type, notes)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO gym_logs (id, user_id, date, hours, workout_type, notes, is_restored)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	stmt, err := tx.PrepareContext(ctx, insertQuery)
 	if err != nil {
@@ -180,7 +184,7 @@ func (r *postgresGymLogRepository) ResetDemoLogs(ctx context.Context, userID uui
 		if logID == uuid.Nil {
 			logID = uuid.New()
 		}
-		if _, err := stmt.ExecContext(ctx, logID, userID, l.Date, l.Hours, l.WorkoutType, l.Notes); err != nil {
+		if _, err := stmt.ExecContext(ctx, logID, userID, l.Date, l.Hours, l.WorkoutType, l.Notes, l.IsRestored); err != nil {
 			return fmt.Errorf("failed inserting demo log for date %s: %w", l.Date, err)
 		}
 	}

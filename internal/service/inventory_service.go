@@ -218,6 +218,7 @@ func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.
 		Date:        targetDate,
 		Hours:       hours,
 		WorkoutType: workoutType,
+		IsRestored:  true,
 	}
 	if err := s.logRepo.UpsertLog(ctx, log); err != nil {
 		return nil, fmt.Errorf("failed saving restored workout log: %w", err)

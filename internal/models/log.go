@@ -14,6 +14,7 @@ type GymLog struct {
 	Hours       float64   `json:"hours"`
 	WorkoutType string    `json:"workout_type"`
 	Notes       *string   `json:"notes,omitempty"`
+	IsRestored  bool      `json:"is_restored"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

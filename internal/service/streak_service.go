@@ -95,6 +95,18 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		}
 	}
 
+	// Normalize date strings to 10 characters (YYYY-MM-DD) to prevent parsing/comparison errors
+	if len(state.CycleStartDate) > 10 {
+		state.CycleStartDate = state.CycleStartDate[:10]
+	}
+	if len(state.CycleEndDate) > 10 {
+		state.CycleEndDate = state.CycleEndDate[:10]
+	}
+	if state.LastLoggedDate != nil && len(*state.LastLoggedDate) > 10 {
+		cleaned := (*state.LastLoggedDate)[:10]
+		state.LastLoggedDate = &cleaned
+	}
+
 	// 4. Check Cycle Rollover if userToday > state.CycleEndDate
 	if todayStr > state.CycleEndDate {
 		// If a plan was queued, activate it now!
