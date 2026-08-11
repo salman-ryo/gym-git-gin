@@ -27,6 +27,7 @@
 * **Build Binary:** `go build -o ./bin/server ./cmd/server/main.go`
 * **Run Tests:** `go test -v ./...`
 * **Dependency Sync:** `go mod tidy`
+* **Terminal** You are using Windows terminal so make sure any other commands are suitably formatted to work on it.
 
 ---
 
