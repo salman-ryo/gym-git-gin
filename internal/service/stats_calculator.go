@@ -55,9 +55,12 @@ func IsDateCompliant(targetDate time.Time, logsMap map[string]float64, targetDay
 }
 
 // CalculateScientificStreak calculates current streak and compliance rate
-func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, daysWindow int) models.StreakStats {
+func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, daysWindow int, today time.Time) models.StreakStats {
 	if daysWindow <= 0 {
 		daysWindow = 30
+	}
+	if today.IsZero() {
+		today = time.Now().UTC()
 	}
 
 	logsMap := make(map[string]float64)
@@ -66,8 +69,6 @@ func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, days
 			logsMap[l.Date] = l.Hours
 		}
 	}
-
-	today := time.Now().UTC()
 
 	// 1. Current Streak: count backward from today until non-compliant day
 	currentStreak := 0
@@ -108,12 +109,14 @@ func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, days
 }
 
 // CalculatePowerScore calculates the 4 Gym Power Score components (0-100 total)
-func CalculatePowerScore(logs []models.GymLog, targetDaysPerWeek int, periodTotalDays int) models.PowerScoreBreakdown {
+func CalculatePowerScore(logs []models.GymLog, targetDaysPerWeek int, periodTotalDays int, today time.Time) models.PowerScoreBreakdown {
 	if periodTotalDays <= 0 {
 		periodTotalDays = 30
 	}
+	if today.IsZero() {
+		today = time.Now().UTC()
+	}
 
-	today := time.Now().UTC()
 	startDate := today.AddDate(0, 0, -periodTotalDays+1).Format("2006-01-02")
 
 	// Filter logs within window and calculate session qualities

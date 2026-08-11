@@ -6,6 +6,7 @@ import (
 
 	"gymgit/backend/internal/models"
 	"gymgit/backend/internal/repository"
+	"gymgit/backend/internal/timezone"
 
 	"github.com/google/uuid"
 )
@@ -136,4 +137,20 @@ func (s *authService) UpdatePlan(ctx context.Context, userID uuid.UUID, planID s
 		return fmt.Errorf("failed to update user weekly plan: %w", err)
 	}
 	return nil
+}
+
+func (s *authService) UpdateTimezone(ctx context.Context, userID uuid.UUID, tz string) (*models.User, error) {
+	if err := timezone.ValidateIANA(tz); err != nil {
+		return nil, fmt.Errorf("invalid timezone: %w", err)
+	}
+
+	if err := s.userRepo.UpdateTimezone(ctx, userID, tz); err != nil {
+		return nil, fmt.Errorf("failed updating timezone: %w", err)
+	}
+
+	updatedUser, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed fetching updated profile: %w", err)
+	}
+	return updatedUser, nil
 }

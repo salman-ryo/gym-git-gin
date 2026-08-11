@@ -63,8 +63,9 @@ func main() {
 	// 5. Initialize Gin Router
 	router := gin.Default()
 
-	// CORS Middleware
+	// CORS & Timezone Middlewares
 	router.Use(middleware.CORSMiddleware(cfg.AllowedOrigins))
+	router.Use(middleware.TimezoneMiddleware())
 
 	// Public Health Routes
 	router.GET("/health", healthHandler.HealthCheck)
@@ -81,6 +82,8 @@ func main() {
 			authGroup.POST("/bootstrap", authHandler.Bootstrap)
 			authGroup.GET("/me", authHandler.GetMe)
 			authGroup.PUT("/plan", authHandler.UpdatePlan)
+			authGroup.POST("/timezone", authHandler.UpdateTimezone)
+			authGroup.PUT("/timezone", authHandler.UpdateTimezone)
 			authGroup.POST("/logout", authHandler.Logout)
 		}
 

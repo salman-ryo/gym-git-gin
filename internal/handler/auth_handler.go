@@ -143,3 +143,37 @@ func (h *AuthHandler) UpdatePlan(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	models.SendSuccess(c, http.StatusOK, nil, "Logged out successfully")
 }
+
+type UpdateTimezoneRequest struct {
+	Timezone string `json:"timezone" binding:"required"`
+}
+
+// UpdateTimezone updates the user's localized IANA timezone identifier
+func (h *AuthHandler) UpdateTimezone(c *gin.Context) {
+	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+		return
+	}
+	authUserID := authUserIDVal.(uuid.UUID)
+
+	var req UpdateTimezoneRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Timezone == "" {
+		models.SendError(c, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body; timezone is required", nil)
+		return
+	}
+
+	user, _, err := h.authService.GetProfile(c.Request.Context(), authUserID)
+	if err != nil || user == nil {
+		models.SendError(c, http.StatusNotFound, "NOT_FOUND", "User profile not found", nil)
+		return
+	}
+
+	updatedUser, err := h.authService.UpdateTimezone(c.Request.Context(), user.ID, req.Timezone)
+	if err != nil {
+		models.SendError(c, http.StatusBadRequest, "INVALID_TIMEZONE", err.Error(), nil)
+		return
+	}
+
+	models.SendSuccess(c, http.StatusOK, updatedUser, "Timezone updated successfully")
+}

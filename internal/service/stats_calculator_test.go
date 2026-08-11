@@ -79,7 +79,7 @@ func TestCalculatePowerScore(t *testing.T) {
 		})
 	}
 
-	breakdown := CalculatePowerScore(logs, 4, 30)
+	breakdown := CalculatePowerScore(logs, 4, 30, today)
 	if breakdown.TotalScore <= 0 || breakdown.TotalScore > 100 {
 		t.Errorf("expected score between 1 and 100, got %d", breakdown.TotalScore)
 	}

@@ -15,6 +15,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
 	UpdateWeeklyPlan(ctx context.Context, userID uuid.UUID, planID string) error
+	UpdateTimezone(ctx context.Context, userID uuid.UUID, timezone string) error
 	UpdateAuthUserID(ctx context.Context, id uuid.UUID, authUserID uuid.UUID) error
 }
 

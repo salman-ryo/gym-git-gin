@@ -9,6 +9,7 @@ import (
 
 	"gymgit/backend/internal/models"
 	"gymgit/backend/internal/repository"
+	"gymgit/backend/internal/timezone"
 
 	"github.com/google/uuid"
 )
@@ -83,7 +84,12 @@ func (s *gymLogService) ResetDemoLogs(ctx context.Context, userID uuid.UUID) err
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	today := time.Now().UTC()
+	
+	loc := time.UTC
+	if user != nil && user.Timezone != "" {
+		loc = timezone.LoadLocation(user.Timezone)
+	}
+	today := timezone.GetUserToday(loc)
 	demoLogs := make([]models.GymLog, 0, 365)
 
 	sampleNotes := map[string][]string{

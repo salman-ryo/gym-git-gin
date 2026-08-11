@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(255),
     avatar_url TEXT,
     provider VARCHAR(50) DEFAULT 'email',
+    timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
     weekly_plan_id VARCHAR(50) REFERENCES weekly_plans(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
