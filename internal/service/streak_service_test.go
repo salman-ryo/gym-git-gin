@@ -132,7 +132,7 @@ func TestStreakService_GetStreakState(t *testing.T) {
 	logRepo := &mockLogRepo{}
 	streakRepo := &mockStreakRepo{}
 
-	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo)
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
 	loc := timezone.LoadLocation("America/New_York")
 
 	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
@@ -152,3 +152,66 @@ func TestStreakService_GetStreakState(t *testing.T) {
 		t.Errorf("expected 3 rest tokens for 4-day plan, got %d", resp.CycleInfo.RestTokensTotal)
 	}
 }
+
+func TestStreakService_StreakWarningAndBrokenEvents(t *testing.T) {
+	userID := uuid.New()
+	planID := "ppl-standard"
+
+	user := &models.User{
+		ID:           userID,
+		AuthUserID:   userID,
+		Email:        "test@gymgit.com",
+		WeeklyPlanID: &planID,
+		Timezone:     "America/New_York",
+	}
+
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:          "ppl-standard",
+				Name:        "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Cardio"},
+			},
+		},
+	}
+	logRepo := &mockLogRepo{}
+	// User streak was broken: current_streak 0, longest_streak 15
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:          userID,
+			CurrentStreak:   0,
+			LongestStreak:   15,
+			CycleStartDate:  "2026-08-01",
+			CycleEndDate:    "2026-08-07",
+			RestTokensTotal: 3,
+			RestTokensUsed:  3,
+			IsFrozen:        false,
+		},
+	}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	loc := timezone.LoadLocation("America/New_York")
+
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.StreakBrokenEvent == nil {
+		t.Fatalf("expected StreakBrokenEvent to be non-nil for broken streak")
+	}
+
+	if resp.StreakBrokenEvent.PreviousStreak != 15 {
+		t.Errorf("expected previous streak 15, got %d", resp.StreakBrokenEvent.PreviousStreak)
+	}
+
+	if resp.StreakWarningEvent == nil {
+		t.Fatalf("expected StreakWarningEvent to be non-nil when rest tokens are exhausted")
+	}
+
+	if !resp.StreakWarningEvent.IsAtRisk {
+		t.Errorf("expected IsAtRisk to be true")
+	}
+}
+

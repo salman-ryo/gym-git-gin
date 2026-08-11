@@ -60,13 +60,14 @@ func main() {
 	planService := service.NewPlanService(planRepo, userRepo)
 	logService := service.NewGymLogService(logRepo, userRepo, planRepo)
 	statsService := service.NewStatsService(userRepo, planRepo, logRepo)
-	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo)
+	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, inventoryRepo)
 	inventoryService := service.NewInventoryService(itemRepo, inventoryRepo, logRepo, streakRepo, userRepo)
 	rewardService := service.NewRewardService(rewardRepo, itemRepo, inventoryRepo, streakRepo, logRepo)
 
 	// 4. Initialize Handlers
 	healthHandler := handler.NewHealthHandler()
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, streakService)
+
 	planHandler := handler.NewPlanHandler(planService)
 	logHandler := handler.NewLogHandler(logService, authService)
 	statsHandler := handler.NewStatsHandler(statsService, authService)

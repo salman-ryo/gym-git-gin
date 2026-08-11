@@ -14,19 +14,27 @@ import (
 )
 
 type streakService struct {
-	streakRepo repository.StreakRepository
-	userRepo   repository.UserRepository
-	planRepo   repository.PlanRepository
-	logRepo    repository.GymLogRepository
+	streakRepo    repository.StreakRepository
+	userRepo      repository.UserRepository
+	planRepo      repository.PlanRepository
+	logRepo       repository.GymLogRepository
+	inventoryRepo repository.InventoryRepository
 }
 
 // NewStreakService creates a new StreakService instance
-func NewStreakService(streakRepo repository.StreakRepository, userRepo repository.UserRepository, planRepo repository.PlanRepository, logRepo repository.GymLogRepository) StreakService {
+func NewStreakService(
+	streakRepo repository.StreakRepository,
+	userRepo repository.UserRepository,
+	planRepo repository.PlanRepository,
+	logRepo repository.GymLogRepository,
+	inventoryRepo repository.InventoryRepository,
+) StreakService {
 	return &streakService{
-		streakRepo: streakRepo,
-		userRepo:   userRepo,
-		planRepo:   planRepo,
-		logRepo:    logRepo,
+		streakRepo:    streakRepo,
+		userRepo:      userRepo,
+		planRepo:      planRepo,
+		logRepo:       logRepo,
+		inventoryRepo: inventoryRepo,
 	}
 }
 
@@ -36,6 +44,7 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 	}
 	userToday := timezone.GetUserToday(loc)
 	todayStr := userToday.Format("2006-01-02")
+
 
 	// 1. Retrieve user profile
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -182,6 +191,55 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		daysRemainingInCycle = int(cEnd.Sub(userToday).Hours()/24) + 1
 	}
 
+	// 8. Calculate Streak Warning Event (Is At Risk?)
+	var warningEvent *models.StreakWarningEvent
+	var brokenEvent *models.StreakBrokenEvent
+
+	todayLogLogged := false
+	if logs != nil {
+		for _, l := range logs {
+			if l.Date == todayStr && l.Hours > 0 && !strings.EqualFold(l.WorkoutType, "Rest") {
+				todayLogLogged = true
+				break
+			}
+		}
+	}
+
+	userMidnight := time.Date(userToday.Year(), userToday.Month(), userToday.Day(), 23, 59, 59, 0, loc)
+	userNow := time.Now().In(loc)
+	hoursRemaining := int(userMidnight.Sub(userNow).Hours())
+	if hoursRemaining < 0 {
+		hoursRemaining = 0
+	}
+
+	if !state.IsFrozen && !todayLogLogged && remainingRest == 0 {
+		warningEvent = &models.StreakWarningEvent{
+			IsAtRisk:       true,
+			HoursRemaining: hoursRemaining,
+			RestTokensLeft: remainingRest,
+			Message:        fmt.Sprintf("Streak at risk! Complete your workout within %d hours to maintain your %d-day streak.", hoursRemaining, state.CurrentStreak),
+		}
+	}
+
+	// 9. Calculate Streak Broken Event
+	if state.CurrentStreak == 0 && state.LongestStreak > 0 && !state.IsFrozen {
+		shieldsCount := 0
+		if s.inventoryRepo != nil {
+			shieldsCount, _ = s.inventoryRepo.GetItemQuantity(ctx, userID, "RESTORE_SHIELD")
+		}
+
+		yesterdayStr := userToday.AddDate(0, 0, -1).Format("2006-01-02")
+		canRestoreUntil := userToday.Format("2006-01-02")
+
+		brokenEvent = &models.StreakBrokenEvent{
+			PreviousStreak:         state.LongestStreak,
+			BrokenOn:               yesterdayStr,
+			RestoreShieldAvailable: shieldsCount > 0,
+			RestoreShieldsCount:    shieldsCount,
+			CanRestoreUntil:        canRestoreUntil,
+		}
+	}
+
 	return &models.StreakResponse{
 		CurrentStreak:  state.CurrentStreak,
 		LongestStreak:  state.LongestStreak,
@@ -200,8 +258,11 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		QueuedWeeklyPlanID: user.QueuedWeeklyPlanID,
 		IsFrozen:           state.IsFrozen,
 		LastLoggedDate:     state.LastLoggedDate,
+		StreakBrokenEvent:  brokenEvent,
+		StreakWarningEvent: warningEvent,
 	}, nil
 }
+
 
 func (s *streakService) FreezeStreak(ctx context.Context, userID uuid.UUID, durationDays int, reason string) (*models.UserStreakState, error) {
 	state, err := s.streakRepo.GetByUserID(ctx, userID)

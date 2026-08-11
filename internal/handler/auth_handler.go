@@ -13,12 +13,16 @@ import (
 )
 
 type AuthHandler struct {
-	authService service.AuthService
+	authService   service.AuthService
+	streakService service.StreakService
 }
 
 // NewAuthHandler initializes a new AuthHandler
-func NewAuthHandler(authService service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService service.AuthService, streakService service.StreakService) *AuthHandler {
+	return &AuthHandler{
+		authService:   authService,
+		streakService: streakService,
+	}
 }
 
 // Bootstrap creates or retrieves user profile idempotently
@@ -56,7 +60,7 @@ func (h *AuthHandler) Bootstrap(c *gin.Context) {
 	models.SendSuccess(c, http.StatusOK, user, "Profile bootstrapped successfully")
 }
 
-// GetMe returns authenticated user profile and active weekly plan
+// GetMe returns authenticated user profile, active weekly plan, and streak lifecycle status
 func (h *AuthHandler) GetMe(c *gin.Context) {
 	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
 	if !exists {
@@ -94,11 +98,23 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		_, activePlan, _ = h.authService.GetProfile(c.Request.Context(), authUserID)
 	}
 
-	models.SendSuccess(c, http.StatusOK, gin.H{
+	loc := middleware.GetUserLocationFromContext(c)
+	var streakState *models.StreakResponse
+	if h.streakService != nil && user != nil {
+		streakState, _ = h.streakService.GetStreakState(c.Request.Context(), user.ID, loc)
+	}
+
+	respData := gin.H{
 		"user": user,
 		"plan": activePlan,
-	}, "User profile retrieved successfully")
+	}
+	if streakState != nil {
+		respData["streak"] = streakState
+	}
+
+	models.SendSuccess(c, http.StatusOK, respData, "User profile retrieved successfully")
 }
+
 
 type UpdatePlanRequest struct {
 	PlanID      string   `json:"plan_id" binding:"required"`
