@@ -121,19 +121,8 @@ Gym-Git transforms gym consistency tracking by moving beyond simplistic daily ca
 
 ---
 
-### Phase 6: Personal Records (PR) & Strength Analytics
-* **Goal:** Track progressive overload, 1-Rep Max (1RM) records, and exercise volume milestones.
-* **Key Components:**
-  1. **PR Tracking Engine:**
-     - Automatic 1RM estimation via Epley formula: $\text{1RM} = \text{Weight} \times (1 + \frac{\text{Reps}}{30})$.
-     - All-time and period-specific PRs for core movements (Bench Press, Squat, Deadlift, Overhead Press, Pull-Ups).
-  2. **PR Celebration Feats:**
-     - Power Score bonus when hitting verified PRs during a compliant weekly cycle.
-
----
-
-### Phase 7: Future Feature — Admin Management Panel & Control System
-* **Goal:** Provide a comprehensive web-based Administrative Control Suite for full system configuration and user management.
+### Phase 6: Admin Management Panel & Control System
+* **Goal:** Provide a comprehensive Administrative Control Suite for full system configuration, item catalog management, reward plan milestone authoring, and user management.
 * **Key Components:**
   1. **Reward Plan & Milestone Management:**
      - GUI & REST endpoints to create, modify, activate, or archive Reward Plans.
@@ -143,6 +132,19 @@ Gym-Git transforms gym consistency tracking by moving beyond simplistic daily ca
   3. **Workout Split & Plan Preset Authoring:**
      - Create and publish standard weekly workout plans (e.g., PPL Standard, Arnold Split) with exercise assignments.
   4. **User Override & Support Tools:**
+     - View user streak state, grant compensation power-ups, adjust timezone settings, and manage user plan subscriptions.
+
+---
+
+### Phase 7: Personal Records (PR) & Strength Analytics
+* **Goal:** Track progressive overload, 1-Rep Max (1RM) records, and exercise volume milestones.
+* **Key Components:**
+  1. **PR Tracking Engine:**
+     - Automatic 1RM estimation via Epley formula: $\text{1RM} = \text{Weight} \times (1 + \frac{\text{Reps}}{30})$.
+     - All-time and period-specific PRs for core movements (Bench Press, Squat, Deadlift, Overhead Press, Pull-Ups).
+  2. **PR Celebration Feats:**
+     - Power Score bonus when hitting verified PRs during a compliant weekly cycle.
+
      - View user streak state, grant compensation power-ups, adjust timezone settings, and manage user plan subscriptions.
 
 ---
