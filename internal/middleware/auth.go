@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gymgit/backend/internal/models"
+	"gymgit/backend/internal/repository"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -23,11 +24,12 @@ import (
 )
 
 const (
-	ContextAuthUserIDKey = "auth_user_id"
-	ContextUserEmailKey  = "user_email"
-	ContextUserNameKey   = "user_name"
-	ContextAvatarURLKey  = "user_avatar_url"
-	ContextProviderKey   = "user_provider"
+	ContextAuthUserIDKey     = "auth_user_id"
+	ContextUserEmailKey      = "user_email"
+	ContextUserNameKey       = "user_name"
+	ContextAvatarURLKey      = "user_avatar_url"
+	ContextProviderKey       = "user_provider"
+	ContextResolvedUserIDKey = "resolved_user_id"
 )
 
 // SupabaseClaims represents the payload structure of a Supabase Auth JWT
@@ -287,4 +289,41 @@ func tryDecodeBase64Bytes(s string) ([]byte, error) {
 		}
 	}
 	return nil, fmt.Errorf("invalid base64")
+}
+
+// ResolveUserMiddleware resolves the database user profile ID from the auth_user_id
+func ResolveUserMiddleware(userRepo repository.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authUserIDVal, exists := c.Get(ContextAuthUserIDKey)
+		if !exists {
+			c.Next()
+			return
+		}
+		authUserID := authUserIDVal.(uuid.UUID)
+
+		if userRepo == nil {
+			c.Next()
+			return
+		}
+
+		user, err := userRepo.GetByAuthUserID(c.Request.Context(), authUserID)
+		if err != nil || user == nil {
+			// Profile not found - we don't abort because bootstrap needs to run
+			c.Next()
+			return
+		}
+
+		c.Set(ContextResolvedUserIDKey, user.ID)
+		c.Next()
+	}
+}
+
+// GetResolvedUserID retrieves the database primary key ID of the user from the context
+func GetResolvedUserID(c *gin.Context) (uuid.UUID, bool) {
+	val, exists := c.Get(ContextResolvedUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "User profile not bootstrapped", nil)
+		return uuid.Nil, false
+	}
+	return val.(uuid.UUID), true
 }

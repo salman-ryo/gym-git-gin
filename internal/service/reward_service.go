@@ -36,16 +36,22 @@ func NewRewardService(
 }
 
 func (s *rewardService) GetRoadmap(ctx context.Context, userID uuid.UUID, planID string) ([]models.RoadmapMilestoneResponse, error) {
-	if planID == "" {
-		planID = "default-streak-roadmap"
+	var plan *models.RewardPlan
+	var err error
+
+	if planID != "" {
+		plan, err = s.rewardRepo.GetActiveRewardPlan(ctx, planID)
 	}
 
-	plan, err := s.rewardRepo.GetActiveRewardPlan(ctx, planID)
-	if err != nil {
-		return nil, fmt.Errorf("failed fetching reward plan: %w", err)
-	}
-	if plan == nil {
-		return nil, fmt.Errorf("reward plan '%s' not found", planID)
+	if err != nil || plan == nil {
+		planID = "default-streak-roadmap"
+		plan, err = s.rewardRepo.GetActiveRewardPlan(ctx, planID)
+		if err != nil {
+			return nil, fmt.Errorf("failed fetching default reward plan: %w", err)
+		}
+		if plan == nil {
+			return nil, fmt.Errorf("default reward plan not found")
+		}
 	}
 
 	// Fetch user streak state

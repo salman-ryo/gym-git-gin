@@ -95,6 +95,7 @@ func main() {
 		// Inventory Group (Protected)
 		inventoryGroup := apiV1.Group("/inventory")
 		inventoryGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		inventoryGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			inventoryGroup.GET("", inventoryHandler.GetInventory)
 			inventoryGroup.POST("/use", inventoryHandler.UseItem)
@@ -103,6 +104,7 @@ func main() {
 		// Rewards Group (Protected)
 		rewardsGroup := apiV1.Group("/rewards")
 		rewardsGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		rewardsGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			rewardsGroup.GET("/roadmap", rewardHandler.GetRoadmap)
 			rewardsGroup.POST("/claim", rewardHandler.ClaimReward)
@@ -111,6 +113,7 @@ func main() {
 		// Admin Rewards Group (Protected)
 		adminGroup := apiV1.Group("/admin")
 		adminGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		adminGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			adminRewardsGroup := adminGroup.Group("/rewards")
 			{
@@ -124,6 +127,7 @@ func main() {
 		// Plans Group (Protected queue route)
 		plansGroup := apiV1.Group("/plans")
 		plansGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		plansGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			plansGroup.PUT("/queue", planHandler.QueuePlan)
 		}
@@ -131,6 +135,7 @@ func main() {
 		// Auth Group (Protected)
 		authGroup := apiV1.Group("/auth")
 		authGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		authGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			authGroup.POST("/bootstrap", authHandler.Bootstrap)
 			authGroup.GET("/me", authHandler.GetMe)
@@ -143,6 +148,7 @@ func main() {
 		// Streak & Cycle Group (Protected)
 		streakGroup := apiV1.Group("/streak")
 		streakGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		streakGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			streakGroup.GET("", streakHandler.GetStreak)
 			streakGroup.POST("/restore", streakHandler.RestoreStreak)
@@ -153,6 +159,7 @@ func main() {
 		// Gym Logs Group (Protected)
 		logsGroup := apiV1.Group("/logs")
 		logsGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		logsGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			logsGroup.GET("", logHandler.GetLogs)
 			logsGroup.POST("", logHandler.UpsertLog)
@@ -164,6 +171,7 @@ func main() {
 		// Analytics Stats Group (Protected)
 		statsGroup := apiV1.Group("/stats")
 		statsGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		statsGroup.Use(middleware.ResolveUserMiddleware(userRepo))
 		{
 			statsGroup.GET("", statsHandler.GetStats)
 			statsGroup.GET("/power", statsHandler.GetPowerStats)

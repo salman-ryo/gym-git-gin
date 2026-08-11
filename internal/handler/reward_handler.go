@@ -22,15 +22,13 @@ func NewRewardHandler(rewardService service.RewardService) *RewardHandler {
 
 // GetRoadmap returns user streak progression roadmap with milestone statuses
 func (h *RewardHandler) GetRoadmap(c *gin.Context) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+	userID, ok := middleware.GetResolvedUserID(c)
+	if !ok {
 		return
 	}
-	authUserID := authUserIDVal.(uuid.UUID)
 	planID := c.Query("plan_id")
 
-	roadmap, err := h.rewardService.GetRoadmap(c.Request.Context(), authUserID, planID)
+	roadmap, err := h.rewardService.GetRoadmap(c.Request.Context(), userID, planID)
 	if err != nil {
 		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve streak reward roadmap", []string{err.Error()})
 		return
@@ -41,12 +39,10 @@ func (h *RewardHandler) GetRoadmap(c *gin.Context) {
 
 // ClaimReward handles user reward claims for unlocked milestone targets
 func (h *RewardHandler) ClaimReward(c *gin.Context) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+	userID, ok := middleware.GetResolvedUserID(c)
+	if !ok {
 		return
 	}
-	authUserID := authUserIDVal.(uuid.UUID)
 
 	var req models.ClaimRewardRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -54,7 +50,7 @@ func (h *RewardHandler) ClaimReward(c *gin.Context) {
 		return
 	}
 
-	result, err := h.rewardService.ClaimReward(c.Request.Context(), authUserID, req.PlanID, req.StreakTarget, req.ItemID)
+	result, err := h.rewardService.ClaimReward(c.Request.Context(), userID, req.PlanID, req.StreakTarget, req.ItemID)
 	if err != nil {
 		models.SendError(c, http.StatusBadRequest, "CLAIM_FAILED", err.Error(), nil)
 		return

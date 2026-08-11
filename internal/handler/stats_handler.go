@@ -9,7 +9,6 @@ import (
 	"gymgit/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type StatsHandler struct {
@@ -27,7 +26,7 @@ func NewStatsHandler(statsService service.StatsService, authService service.Auth
 
 // GetStats returns general dashboard statistics and scientific streak
 func (h *StatsHandler) GetStats(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -50,7 +49,7 @@ func (h *StatsHandler) GetStats(c *gin.Context) {
 
 // GetPowerStats returns Gym Power Score breakdown and gamified Anime Tier mapping
 func (h *StatsHandler) GetPowerStats(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -69,22 +68,4 @@ func (h *StatsHandler) GetPowerStats(c *gin.Context) {
 	}
 
 	models.SendSuccess(c, http.StatusOK, powerStats, "Gym Power Score and Anime Tier retrieved successfully")
-}
-
-// getUserID extracts auth_user_id from context and resolves user profile ID
-func (h *StatsHandler) getUserID(c *gin.Context) (uuid.UUID, bool) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
-		return uuid.Nil, false
-	}
-	authUserID := authUserIDVal.(uuid.UUID)
-
-	user, _, err := h.authService.GetProfile(c.Request.Context(), authUserID)
-	if err != nil || user == nil {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "User profile not bootstrapped", nil)
-		return uuid.Nil, false
-	}
-
-	return user.ID, true
 }

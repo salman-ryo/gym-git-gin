@@ -8,7 +8,6 @@ import (
 	"gymgit/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type InventoryHandler struct {
@@ -32,14 +31,12 @@ func (h *InventoryHandler) GetCatalog(c *gin.Context) {
 
 // GetInventory returns user item balances and active item effects
 func (h *InventoryHandler) GetInventory(c *gin.Context) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+	userID, ok := middleware.GetResolvedUserID(c)
+	if !ok {
 		return
 	}
-	authUserID := authUserIDVal.(uuid.UUID)
 
-	inventory, activeEffects, err := h.inventoryService.GetUserInventory(c.Request.Context(), authUserID)
+	inventory, activeEffects, err := h.inventoryService.GetUserInventory(c.Request.Context(), userID)
 	if err != nil {
 		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve user inventory", []string{err.Error()})
 		return
@@ -53,12 +50,10 @@ func (h *InventoryHandler) GetInventory(c *gin.Context) {
 
 // UseItem consumes or activates an item from user inventory
 func (h *InventoryHandler) UseItem(c *gin.Context) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+	userID, ok := middleware.GetResolvedUserID(c)
+	if !ok {
 		return
 	}
-	authUserID := authUserIDVal.(uuid.UUID)
 
 	var req models.UseItemRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ItemID == "" {
@@ -68,7 +63,7 @@ func (h *InventoryHandler) UseItem(c *gin.Context) {
 
 	loc := middleware.GetUserLocationFromContext(c)
 
-	result, err := h.inventoryService.UseItem(c.Request.Context(), authUserID, req.ItemID, req.Quantity, req.Payload, loc)
+	result, err := h.inventoryService.UseItem(c.Request.Context(), userID, req.ItemID, req.Quantity, req.Payload, loc)
 	if err != nil {
 		models.SendError(c, http.StatusBadRequest, "ITEM_USE_FAILED", err.Error(), nil)
 		return

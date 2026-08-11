@@ -9,7 +9,6 @@ import (
 	"gymgit/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type LogHandler struct {
@@ -27,7 +26,7 @@ func NewLogHandler(logService service.GymLogService, authService service.AuthSer
 
 // GetLogs returns gym logs for the authenticated user with optional filtering
 func (h *LogHandler) GetLogs(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -68,7 +67,7 @@ type SaveLogRequest struct {
 
 // UpsertLog handles creation/updating or deletion (if hours <= 0) of a gym log
 func (h *LogHandler) UpsertLog(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -108,7 +107,7 @@ func (h *LogHandler) UpsertLog(c *gin.Context) {
 
 // DeleteLog deletes a gym log by date
 func (h *LogHandler) DeleteLog(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -136,7 +135,7 @@ func (h *LogHandler) DeleteLog(c *gin.Context) {
 
 // ResetDemoLogs populates 365 days of demo historical workout logs for testing
 func (h *LogHandler) ResetDemoLogs(c *gin.Context) {
-	userID, ok := h.getUserID(c)
+	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
 		return
 	}
@@ -150,22 +149,4 @@ func (h *LogHandler) ResetDemoLogs(c *gin.Context) {
 		"user_id": userID,
 		"days":    365,
 	}, "Demo historical workout logs generated successfully")
-}
-
-// getUserID extracts auth_user_id from context and resolves user profile ID
-func (h *LogHandler) getUserID(c *gin.Context) (uuid.UUID, bool) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
-		return uuid.Nil, false
-	}
-	authUserID := authUserIDVal.(uuid.UUID)
-
-	user, _, err := h.authService.GetProfile(c.Request.Context(), authUserID)
-	if err != nil || user == nil {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "User profile not bootstrapped", nil)
-		return uuid.Nil, false
-	}
-
-	return user.ID, true
 }

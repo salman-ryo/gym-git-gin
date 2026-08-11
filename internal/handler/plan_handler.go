@@ -8,7 +8,6 @@ import (
 	"gymgit/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PlanHandler struct {
@@ -37,12 +36,10 @@ type QueuePlanRequest struct {
 
 // QueuePlan queues a weekly plan change to activate on the next 7-day cycle
 func (h *PlanHandler) QueuePlan(c *gin.Context) {
-	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
-	if !exists {
-		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+	userID, ok := middleware.GetResolvedUserID(c)
+	if !ok {
 		return
 	}
-	authUserID := authUserIDVal.(uuid.UUID)
 
 	var req QueuePlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.WeeklyPlanID == "" {
@@ -50,7 +47,7 @@ func (h *PlanHandler) QueuePlan(c *gin.Context) {
 		return
 	}
 
-	if err := h.planService.QueuePlanChange(c.Request.Context(), authUserID, req.WeeklyPlanID); err != nil {
+	if err := h.planService.QueuePlanChange(c.Request.Context(), userID, req.WeeklyPlanID); err != nil {
 		models.SendError(c, http.StatusBadRequest, "QUEUE_FAILED", err.Error(), nil)
 		return
 	}
