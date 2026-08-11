@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"gymgit/backend/migrations"
@@ -42,16 +43,35 @@ func ConnectDB(databaseURL string) (*sql.DB, error) {
 	return db, nil
 }
 
-// RunMigrations executes embedded DDL SQL migrations idempotently
+// RunMigrations executes embedded DDL SQL migrations in sorted alphabetical order
 func RunMigrations(db *sql.DB) error {
-	if migrations.MigrationSQL == "" {
-		return fmt.Errorf("migration SQL payload is empty")
+	entries, err := migrations.UpMigrationsFS.ReadDir(".")
+	if err != nil {
+		return fmt.Errorf("failed reading embedded migrations directory: %w", err)
 	}
 
-	if _, err := db.Exec(migrations.MigrationSQL); err != nil {
-		return fmt.Errorf("failed executing database migrations: %w", err)
+	// Iterate through migration files in sorted order (ReadDir returns them sorted by filename)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filename := entry.Name()
+		if !strings.HasSuffix(filename, ".up.sql") {
+			continue
+		}
+
+		log.Printf("Executing database migration: %s", filename)
+		content, err := migrations.UpMigrationsFS.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed reading migration file %s: %w", filename, err)
+		}
+
+		if _, err := db.Exec(string(content)); err != nil {
+			return fmt.Errorf("failed executing migration script %s: %w", filename, err)
+		}
 	}
 
-	log.Println("Database auto-migrations executed successfully (tables & seed data verified)")
+	log.Println("Database auto-migrations executed successfully (all tables & seed data verified)")
 	return nil
 }
+
