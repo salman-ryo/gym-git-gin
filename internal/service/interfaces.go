@@ -42,3 +42,12 @@ type StreakService interface {
 	GetStreakState(ctx context.Context, userID uuid.UUID, loc *time.Location) (*models.StreakResponse, error)
 }
 
+// InventoryService defines business logic for item catalog, user inventory, and item activations
+type InventoryService interface {
+	GetCatalog(ctx context.Context) ([]models.Item, error)
+	GetUserInventory(ctx context.Context, userID uuid.UUID) ([]models.UserInventoryItem, []models.UserActiveEffect, error)
+	UseItem(ctx context.Context, userID uuid.UUID, itemID string, quantity int, payload map[string]interface{}, loc *time.Location) (*models.UseItemResult, error)
+	RedeemRestoreShield(ctx context.Context, userID uuid.UUID, targetDate string, workoutType string, hours float64, loc *time.Location) (*models.RestoreShieldResult, error)
+	CheckAndGrantMilestones(ctx context.Context, userID uuid.UUID, streakDays int) ([]models.MilestoneReward, error)
+}
+

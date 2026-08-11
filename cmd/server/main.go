@@ -42,12 +42,16 @@ func main() {
 	var planRepo repository.PlanRepository
 	var logRepo repository.GymLogRepository
 	var streakRepo repository.StreakRepository
+	var itemRepo repository.ItemRepository
+	var inventoryRepo repository.InventoryRepository
 
 	if db != nil {
 		userRepo = repository.NewUserRepository(db)
 		planRepo = repository.NewPlanRepository(db)
 		logRepo = repository.NewGymLogRepository(db)
 		streakRepo = repository.NewStreakRepository(db)
+		itemRepo = repository.NewItemRepository(db)
+		inventoryRepo = repository.NewInventoryRepository(db)
 	}
 
 	authService := service.NewAuthService(userRepo, planRepo)
@@ -55,6 +59,7 @@ func main() {
 	logService := service.NewGymLogService(logRepo, userRepo, planRepo)
 	statsService := service.NewStatsService(userRepo, planRepo, logRepo)
 	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo)
+	inventoryService := service.NewInventoryService(itemRepo, inventoryRepo, logRepo, streakRepo, userRepo)
 
 	// 4. Initialize Handlers
 	healthHandler := handler.NewHealthHandler()
@@ -62,7 +67,8 @@ func main() {
 	planHandler := handler.NewPlanHandler(planService)
 	logHandler := handler.NewLogHandler(logService, authService)
 	statsHandler := handler.NewStatsHandler(statsService, authService)
-	streakHandler := handler.NewStreakHandler(streakService)
+	streakHandler := handler.NewStreakHandler(streakService, inventoryService)
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 
 	// 5. Initialize Gin Router
 	router := gin.Default()
@@ -78,6 +84,15 @@ func main() {
 	{
 		apiV1.GET("/health", healthHandler.HealthCheck)
 		apiV1.GET("/plans", planHandler.GetPlans)
+		apiV1.GET("/items", inventoryHandler.GetCatalog)
+
+		// Inventory Group (Protected)
+		inventoryGroup := apiV1.Group("/inventory")
+		inventoryGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		{
+			inventoryGroup.GET("", inventoryHandler.GetInventory)
+			inventoryGroup.POST("/use", inventoryHandler.UseItem)
+		}
 
 		// Plans Group (Protected queue route)
 		plansGroup := apiV1.Group("/plans")
@@ -103,6 +118,7 @@ func main() {
 		streakGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
 		{
 			streakGroup.GET("", streakHandler.GetStreak)
+			streakGroup.POST("/restore", streakHandler.RestoreStreak)
 		}
 
 		// Gym Logs Group (Protected)

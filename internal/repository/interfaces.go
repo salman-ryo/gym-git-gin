@@ -41,3 +41,22 @@ type StreakRepository interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserStreakState, error)
 	UpsertState(ctx context.Context, state *models.UserStreakState) error
 }
+
+// ItemRepository defines database operations for the master item catalog
+type ItemRepository interface {
+	GetAll(ctx context.Context) ([]models.Item, error)
+	GetByID(ctx context.Context, id string) (*models.Item, error)
+	Create(ctx context.Context, item *models.Item) error
+}
+
+// InventoryRepository defines database operations for user item balances & active effects
+type InventoryRepository interface {
+	GetInventory(ctx context.Context, userID uuid.UUID) ([]models.UserInventoryItem, error)
+	GetItemQuantity(ctx context.Context, userID uuid.UUID, itemID string) (int, error)
+	AddItemQuantity(ctx context.Context, userID uuid.UUID, itemID string, delta int) (int, error)
+	DeductItemQuantity(ctx context.Context, userID uuid.UUID, itemID string, delta int) (int, error)
+	CreateActiveEffect(ctx context.Context, effect *models.UserActiveEffect) error
+	GetActiveEffects(ctx context.Context, userID uuid.UUID) ([]models.UserActiveEffect, error)
+	GetLatestActiveEffectByItem(ctx context.Context, userID uuid.UUID, itemID string) (*models.UserActiveEffect, error)
+	DeactivateExpiredEffects(ctx context.Context, userID uuid.UUID) error
+}

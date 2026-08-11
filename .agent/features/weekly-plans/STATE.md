@@ -11,6 +11,7 @@
 - [x] **Task 1.1:** PlanRepository & PlanService logic in `internal/repository/plan_repository.go` & `internal/service/plan_service.go` ([01-plan-repository-and-service.md](file:///.agent/features/weekly-plans/01-plan-repository-and-service.md))
 - [x] **Task 2.1:** Plan HTTP handlers & route registration in `internal/handler/plan_handler.go` & `cmd/server/main.go` ([02-plan-handlers-and-endpoints.md](file:///.agent/features/weekly-plans/02-plan-handlers-and-endpoints.md))
 - [x] **Phase 2:** 7-Day Plan Cycles, Rest Tokens & Accuracy Scoring (`user_streak_states`, `GET /api/v1/streak`, `PUT /api/v1/plans/queue`, `CalculateSplitAccuracy`)
+- [x] **Phase 3:** Gamified Inventory & Milestone Power-Up System (`items`, `user_inventories`, `user_active_effects`, `GET /api/v1/items`, `GET /api/v1/inventory`, `POST /api/v1/inventory/use`, `POST /api/v1/streak/restore`)
 
 ---
 
@@ -22,3 +23,4 @@
 | `2026-08-08T09:30:00Z` | `01-plan-repository-and-service` | Created `PlanRepository` and `PlanService` to query preset and user custom plans | JSON category array serialization verified |
 | `2026-08-08T09:45:00Z` | `02-plan-handlers-and-endpoints` | Registered public `GET /api/v1/plans` endpoint in Gin engine | Returns plans array with HTTP 200 envelope |
 | `2026-08-11T13:20:00Z` | `Phase 2 - 7-Day Cycles & Rest Tokens` | Built `user_streak_states` table, `StreakRepository`, `StreakService`, `CalculateSplitAccuracy`, `PUT /api/v1/plans/queue` & `GET /api/v1/streak` | `go test -v ./...` passed; `go build` succeeded |
+| `2026-08-11T13:42:00Z` | `Phase 3 - Gamified Inventory System` | Created `items`, `user_inventories`, `user_active_effects` tables, `InventoryRepository`, `InventoryService`, `InventoryHandler`, `POST /api/v1/inventory/use` & `POST /api/v1/streak/restore` | `go test -v ./...` passed; `go build` succeeded |
