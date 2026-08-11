@@ -60,3 +60,18 @@ type InventoryRepository interface {
 	GetLatestActiveEffectByItem(ctx context.Context, userID uuid.UUID, itemID string) (*models.UserActiveEffect, error)
 	DeactivateExpiredEffects(ctx context.Context, userID uuid.UUID) error
 }
+
+// RewardRepository defines database operations for reward plans, roadmap milestones, and claimed rewards
+type RewardRepository interface {
+	GetActiveRewardPlan(ctx context.Context, planID string) (*models.RewardPlan, error)
+	GetAllRewardPlans(ctx context.Context) ([]models.RewardPlan, error)
+	CreateRewardPlan(ctx context.Context, plan *models.RewardPlan) error
+	DeleteRewardPlan(ctx context.Context, planID string) error
+	GetRewardMilestones(ctx context.Context, planID string) ([]models.RewardPlanMilestone, error)
+	UpsertMilestone(ctx context.Context, milestone *models.RewardPlanMilestone) error
+	DeleteMilestone(ctx context.Context, milestoneID uuid.UUID) error
+	GetUserClaimedRewards(ctx context.Context, userID uuid.UUID, planID string) ([]models.UserClaimedReward, error)
+	IsRewardClaimed(ctx context.Context, userID uuid.UUID, planID string, streakTarget int, itemID string) (bool, error)
+	ClaimReward(ctx context.Context, claim *models.UserClaimedReward) error
+}
+

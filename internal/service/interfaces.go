@@ -37,9 +37,11 @@ type StatsService interface {
 	GetPowerStats(ctx context.Context, userID uuid.UUID, days int) (*models.PowerStatsResponse, error)
 }
 
-// StreakService defines business logic for 7-day cycle streak states & rest tokens
+// StreakService defines business logic for 7-day cycle streak states, rest tokens & sickness freezes
 type StreakService interface {
 	GetStreakState(ctx context.Context, userID uuid.UUID, loc *time.Location) (*models.StreakResponse, error)
+	FreezeStreak(ctx context.Context, userID uuid.UUID, durationDays int, reason string) (*models.UserStreakState, error)
+	UnfreezeStreak(ctx context.Context, userID uuid.UUID) (*models.UserStreakState, error)
 }
 
 // InventoryService defines business logic for item catalog, user inventory, and item activations
@@ -50,4 +52,16 @@ type InventoryService interface {
 	RedeemRestoreShield(ctx context.Context, userID uuid.UUID, targetDate string, workoutType string, hours float64, loc *time.Location) (*models.RestoreShieldResult, error)
 	CheckAndGrantMilestones(ctx context.Context, userID uuid.UUID, streakDays int) ([]models.MilestoneReward, error)
 }
+
+// RewardService defines business logic for reward plans, roadmap milestone claims, and admin CRUD
+type RewardService interface {
+	GetRoadmap(ctx context.Context, userID uuid.UUID, planID string) ([]models.RoadmapMilestoneResponse, error)
+	ClaimReward(ctx context.Context, userID uuid.UUID, planID string, streakTarget int, itemID string) (*models.ClaimRewardResult, error)
+	GetAllPlans(ctx context.Context) ([]models.RewardPlan, error)
+	CreateRewardPlan(ctx context.Context, req models.CreateRewardPlanRequest) (*models.RewardPlan, error)
+	DeleteRewardPlan(ctx context.Context, planID string) error
+	UpsertMilestone(ctx context.Context, planID string, req models.UpsertMilestoneRequest) (*models.RewardPlanMilestone, error)
+	DeleteMilestone(ctx context.Context, milestoneID uuid.UUID) error
+}
+
 

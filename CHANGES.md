@@ -85,21 +85,25 @@ Gym-Git transforms gym consistency tracking by moving beyond simplistic daily ca
 
 ---
 
-### Phase 4: Sickness & Injury Freeze Vault ("Ice Pause")
-* **Goal:** Prevent streak loss during medical emergencies, injury recovery, or severe illness without requiring manual day-by-day maintenance.
+### Phase 4: Sickness & Injury Freeze Vault, Item Usage & Dynamic Reward Roadmap System
+* **Goal:** Provide item usage mechanics, Sickness/Injury Freeze state, and a dynamic Streak Reward Roadmap System presented as a visual progression roadmap on the frontend.
 * **Key Components:**
-  1. **Freeze Activation & Token Duration:**
+  1. **Dynamic Streak Reward Roadmap Engine:**
+     - Computes milestone rewards along a streak roadmap (e.g. 7-day streak $\rightarrow$ 1x Restore Shield, 10-day streak $\rightarrow$ 1x Streak Freeze Token, etc.).
+     - **Dynamic Milestone Customization:** Administrators can freely insert, update, or delete milestone targets at arbitrary streak days (e.g. inserting Day 11 $\rightarrow$ +5 Restore Shields, modifying Day 30 rewards, or deleting milestones).
+     - Frontend receives an ordered roadmap list via `GET /api/v1/rewards/roadmap` with status tags (`LOCKED`, `CLAIMABLE`, `CLAIMED`).
+     - Users explicitly claim unlocked rewards via `POST /api/v1/rewards/claim`, adding the awarded items directly into their inventory.
+  2. **Freeze Activation & Token Duration:**
      - User triggers: *"I'm sick/injured, freeze my streak"*.
-     - Optional metadata: Reason (e.g., `"Tore a muscle"`, `"Severe flu"`), expected return window. We can have freeze tokens/items each lasting one day, so for a 3-day freeze the user consumes 3 tokens/items from inventory. Once back, the system checks if the freeze window was exceeded. Staying away past the allocated freeze duration will break the streak.
+     - Optional metadata: Reason (e.g., `"Tore a muscle"`, `"Severe flu"`), duration. Consumes 1 or more `STREAK_FREEZE_TOKEN`s.
      - Streak status immediately becomes `"PAUSED_IN_ICE"`.
-  2. **Explicit Manual Unfreeze or Expiration Only (No Automatic Unfreeze on Visit/Login):**
-     - **No Auto-Unfreeze on App Access / Login:** Coming to the app, logging in, or checking profile data does **NOT** automatically turn off or break the freeze. Users who are sick often log in to inspect their stats or data without working out, so auto-unfreezing on visit is forbidden.
+  3. **Explicit Manual Unfreeze or Expiration Only (No Automatic Unfreeze on Visit/Login):**
+     - **No Auto-Unfreeze on App Access / Login:** Coming to the app, logging in, or checking profile data does **NOT** automatically turn off or break the freeze.
      - **Termination Criteria:** The freeze ends **ONLY** if:
        a) **Expiration:** The freeze token duration or set freeze period expires.
-       b) **Manual Unfreeze:** The user explicitly turns off / ends the freeze power (e.g., via `POST /api/v1/streak/unfreeze` or by manually unfreezing).
-  3. **Git-Style Heatmap Visual Differentiation:**
+       b) **Manual Unfreeze:** The user explicitly turns off / ends the freeze power (e.g., via `POST /api/v1/streak/unfreeze`).
+  4. **Git-Style Heatmap Visual Differentiation:**
      - Frozen days are visually distinct on the contribution graph (e.g., icy blue `#38bdf8` / frost pattern).
-     - Tooltip displays freeze duration and user-provided reason.
 
 ---
 
@@ -117,7 +121,7 @@ Gym-Git transforms gym consistency tracking by moving beyond simplistic daily ca
 
 ---
 
-### Phase 6: Future Feature — Personal Records (PR) & Strength Analytics
+### Phase 6: Personal Records (PR) & Strength Analytics
 * **Goal:** Track progressive overload, 1-Rep Max (1RM) records, and exercise volume milestones.
 * **Key Components:**
   1. **PR Tracking Engine:**
@@ -125,6 +129,21 @@ Gym-Git transforms gym consistency tracking by moving beyond simplistic daily ca
      - All-time and period-specific PRs for core movements (Bench Press, Squat, Deadlift, Overhead Press, Pull-Ups).
   2. **PR Celebration Feats:**
      - Power Score bonus when hitting verified PRs during a compliant weekly cycle.
+
+---
+
+### Phase 7: Future Feature — Admin Management Panel & Control System
+* **Goal:** Provide a comprehensive web-based Administrative Control Suite for full system configuration and user management.
+* **Key Components:**
+  1. **Reward Plan & Milestone Management:**
+     - GUI & REST endpoints to create, modify, activate, or archive Reward Plans.
+     - Dynamic milestone CRUD editor: Add custom day milestones (e.g. Day 11 $\rightarrow$ 5 Restore Shields), modify rewards/quantities, or delete milestone steps.
+  2. **Items & Power-Ups Catalog Management:**
+     - Add new item definitions, adjust duration, effect types, icon slugs, and rarity levels.
+  3. **Workout Split & Plan Preset Authoring:**
+     - Create and publish standard weekly workout plans (e.g., PPL Standard, Arnold Split) with exercise assignments.
+  4. **User Override & Support Tools:**
+     - View user streak state, grant compensation power-ups, adjust timezone settings, and manage user plan subscriptions.
 
 ---
 
@@ -164,7 +183,41 @@ CREATE TABLE IF NOT EXISTS user_inventories (
     UNIQUE(user_id, item_type)
 );
 
--- 4. Sickness / Injury Streak Freezes
+-- 4. Reward Plans & Roadmap Milestones
+CREATE TABLE IF NOT EXISTS reward_plans (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS reward_plan_milestones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    plan_id VARCHAR(50) NOT NULL REFERENCES reward_plans(id) ON DELETE CASCADE,
+    streak_target INT NOT NULL,
+    item_id VARCHAR(50) NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    quantity INT NOT NULL DEFAULT 1,
+    title VARCHAR(100) NOT NULL,
+    description TEXT,
+    badge_slug VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(plan_id, streak_target, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_claimed_rewards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id VARCHAR(50) NOT NULL REFERENCES reward_plans(id) ON DELETE CASCADE,
+    streak_target INT NOT NULL,
+    item_id VARCHAR(50) NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, plan_id, streak_target, item_id)
+);
+
+-- 5. Sickness / Injury Streak Freezes
 CREATE TABLE IF NOT EXISTS streak_freezes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -174,18 +227,6 @@ CREATE TABLE IF NOT EXISTS streak_freezes (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 5. Future Scope: Exercise Library & Personal Records
-CREATE TABLE IF NOT EXISTS personal_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    exercise_name VARCHAR(150) NOT NULL,
-    weight_kg NUMERIC(6,2) NOT NULL,
-    reps INT NOT NULL,
-    estimated_1rm NUMERIC(6,2) NOT NULL,
-    achieved_at DATE NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -201,4 +242,9 @@ CREATE TABLE IF NOT EXISTS personal_records (
 | `POST /api/v1/streak/unfreeze` | None | Manually turns off an active freeze power before natural expiration |
 | `POST /api/v1/streak/restore` | `{ "target_date": "2026-08-08", "log_id": "uuid" }` | Consumes 1 Restore Shield to revive streak from missed date (up to 3 days ago) |
 | `GET /api/v1/inventory` | None | Lists user's power-ups, shields, and items |
+| `GET /api/v1/rewards/roadmap` | None | Returns interactive streak reward roadmap with status (`LOCKED`, `CLAIMABLE`, `CLAIMED`) |
+| `POST /api/v1/rewards/claim` | `{ "streak_target": 7, "item_id": "RESTORE_SHIELD" }` | Claims unlocked milestone reward and grants item into inventory |
+| `POST /api/v1/admin/rewards/plans/:id/milestones` | `{ "streak_target": 11, "item_id": "RESTORE_SHIELD", "quantity": 5, "title": "Day 11 Power" }` | Admin: Add or update milestone target in a reward plan |
+| `DELETE /api/v1/admin/rewards/plans/:id/milestones/:milestone_id` | None | Admin: Delete a milestone target from a plan |
 | `PUT /api/v1/plans/queue` | `{ "weekly_plan_id": "ppl-core" }` | Queues plan change to activate on next 7-day cycle |
+

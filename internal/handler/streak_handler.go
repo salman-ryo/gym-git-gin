@@ -69,3 +69,67 @@ func (h *StreakHandler) RestoreStreak(c *gin.Context) {
 
 	models.SendSuccess(c, http.StatusOK, result, "Streak restored successfully")
 }
+
+// FreezeStreak consumes STREAK_FREEZE_TOKEN(s) to set streak status to frozen (Ice Pause)
+func (h *StreakHandler) FreezeStreak(c *gin.Context) {
+	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+		return
+	}
+	authUserID := authUserIDVal.(uuid.UUID)
+
+	var req struct {
+		DurationDays int    `json:"duration_days"`
+		Reason       string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if req.DurationDays <= 0 {
+		req.DurationDays = 1
+	}
+
+	loc := middleware.GetUserLocationFromContext(c)
+
+	// Consume STREAK_FREEZE_TOKEN from inventory
+	useResult, err := h.inventoryService.UseItem(c.Request.Context(), authUserID, "STREAK_FREEZE_TOKEN", req.DurationDays, map[string]interface{}{"reason": req.Reason}, loc)
+	if err != nil {
+		models.SendError(c, http.StatusBadRequest, "FREEZE_FAILED", err.Error(), nil)
+		return
+	}
+
+	state, err := h.streakService.FreezeStreak(c.Request.Context(), authUserID, req.DurationDays, req.Reason)
+	if err != nil {
+		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error(), nil)
+		return
+	}
+
+	models.SendSuccess(c, http.StatusOK, gin.H{
+		"is_frozen":          state.IsFrozen,
+		"tokens_consumed":    useResult.QuantityConsumed,
+		"remaining_tokens":  useResult.RemainingQuantity,
+		"active_until":       useResult.ActiveUntil,
+		"details":            useResult.Details,
+	}, "Streak successfully paused in ice")
+}
+
+// UnfreezeStreak manually deactivates an active streak freeze state
+func (h *StreakHandler) UnfreezeStreak(c *gin.Context) {
+	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+		return
+	}
+	authUserID := authUserIDVal.(uuid.UUID)
+
+	state, err := h.streakService.UnfreezeStreak(c.Request.Context(), authUserID)
+	if err != nil {
+		models.SendError(c, http.StatusBadRequest, "UNFREEZE_FAILED", err.Error(), nil)
+		return
+	}
+
+	models.SendSuccess(c, http.StatusOK, gin.H{
+		"is_frozen": state.IsFrozen,
+		"message":   "Streak freeze manually deactivated. Workout tracking resumed.",
+	}, "Streak un-frozen successfully")
+}
+

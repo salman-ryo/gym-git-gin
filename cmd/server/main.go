@@ -44,6 +44,7 @@ func main() {
 	var streakRepo repository.StreakRepository
 	var itemRepo repository.ItemRepository
 	var inventoryRepo repository.InventoryRepository
+	var rewardRepo repository.RewardRepository
 
 	if db != nil {
 		userRepo = repository.NewUserRepository(db)
@@ -52,6 +53,7 @@ func main() {
 		streakRepo = repository.NewStreakRepository(db)
 		itemRepo = repository.NewItemRepository(db)
 		inventoryRepo = repository.NewInventoryRepository(db)
+		rewardRepo = repository.NewRewardRepository(db)
 	}
 
 	authService := service.NewAuthService(userRepo, planRepo)
@@ -60,6 +62,7 @@ func main() {
 	statsService := service.NewStatsService(userRepo, planRepo, logRepo)
 	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo)
 	inventoryService := service.NewInventoryService(itemRepo, inventoryRepo, logRepo, streakRepo, userRepo)
+	rewardService := service.NewRewardService(rewardRepo, itemRepo, inventoryRepo, streakRepo, logRepo)
 
 	// 4. Initialize Handlers
 	healthHandler := handler.NewHealthHandler()
@@ -69,6 +72,7 @@ func main() {
 	statsHandler := handler.NewStatsHandler(statsService, authService)
 	streakHandler := handler.NewStreakHandler(streakService, inventoryService)
 	inventoryHandler := handler.NewInventoryHandler(inventoryService)
+	rewardHandler := handler.NewRewardHandler(rewardService)
 
 	// 5. Initialize Gin Router
 	router := gin.Default()
@@ -85,6 +89,7 @@ func main() {
 		apiV1.GET("/health", healthHandler.HealthCheck)
 		apiV1.GET("/plans", planHandler.GetPlans)
 		apiV1.GET("/items", inventoryHandler.GetCatalog)
+		apiV1.GET("/rewards/plans", rewardHandler.GetAllPlans)
 
 		// Inventory Group (Protected)
 		inventoryGroup := apiV1.Group("/inventory")
@@ -92,6 +97,27 @@ func main() {
 		{
 			inventoryGroup.GET("", inventoryHandler.GetInventory)
 			inventoryGroup.POST("/use", inventoryHandler.UseItem)
+		}
+
+		// Rewards Group (Protected)
+		rewardsGroup := apiV1.Group("/rewards")
+		rewardsGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		{
+			rewardsGroup.GET("/roadmap", rewardHandler.GetRoadmap)
+			rewardsGroup.POST("/claim", rewardHandler.ClaimReward)
+		}
+
+		// Admin Rewards Group (Protected)
+		adminGroup := apiV1.Group("/admin")
+		adminGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		{
+			adminRewardsGroup := adminGroup.Group("/rewards")
+			{
+				adminRewardsGroup.POST("/plans", rewardHandler.CreateRewardPlan)
+				adminRewardsGroup.DELETE("/plans/:id", rewardHandler.DeleteRewardPlan)
+				adminRewardsGroup.POST("/plans/:id/milestones", rewardHandler.UpsertMilestone)
+				adminRewardsGroup.DELETE("/plans/:id/milestones/:milestone_id", rewardHandler.DeleteMilestone)
+			}
 		}
 
 		// Plans Group (Protected queue route)
@@ -119,6 +145,8 @@ func main() {
 		{
 			streakGroup.GET("", streakHandler.GetStreak)
 			streakGroup.POST("/restore", streakHandler.RestoreStreak)
+			streakGroup.POST("/freeze", streakHandler.FreezeStreak)
+			streakGroup.POST("/unfreeze", streakHandler.UnfreezeStreak)
 		}
 
 		// Gym Logs Group (Protected)
@@ -140,6 +168,7 @@ func main() {
 			statsGroup.GET("/power", statsHandler.GetPowerStats)
 		}
 	}
+
 
 	// 6. Start Server
 	log.Printf("Gym-Git server starting on port %s", cfg.Port)

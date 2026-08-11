@@ -202,3 +202,41 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		LastLoggedDate:     state.LastLoggedDate,
 	}, nil
 }
+
+func (s *streakService) FreezeStreak(ctx context.Context, userID uuid.UUID, durationDays int, reason string) (*models.UserStreakState, error) {
+	state, err := s.streakRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving streak state: %w", err)
+	}
+	if state == nil {
+		now := time.Now().UTC()
+		state = &models.UserStreakState{
+			UserID:         userID,
+			CycleStartDate: now.Format("2006-01-02"),
+			CycleEndDate:   now.AddDate(0, 0, 6).Format("2006-01-02"),
+		}
+	}
+
+	state.IsFrozen = true
+	if err := s.streakRepo.UpsertState(ctx, state); err != nil {
+		return nil, fmt.Errorf("failed updating freeze state: %w", err)
+	}
+	return state, nil
+}
+
+func (s *streakService) UnfreezeStreak(ctx context.Context, userID uuid.UUID) (*models.UserStreakState, error) {
+	state, err := s.streakRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving streak state: %w", err)
+	}
+	if state == nil {
+		return nil, fmt.Errorf("streak state not found")
+	}
+
+	state.IsFrozen = false
+	if err := s.streakRepo.UpsertState(ctx, state); err != nil {
+		return nil, fmt.Errorf("failed updating freeze state: %w", err)
+	}
+	return state, nil
+}
+

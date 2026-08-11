@@ -149,6 +149,21 @@ func (s *inventoryService) UseItem(ctx context.Context, userID uuid.UUID, itemID
 		return nil, fmt.Errorf("failed activating item effect: %w", err)
 	}
 
+	if itemID == "STREAK_FREEZE_TOKEN" {
+		state, errState := s.streakRepo.GetByUserID(ctx, userID)
+		if errState == nil && state != nil {
+			state.IsFrozen = true
+			_ = s.streakRepo.UpsertState(ctx, state)
+		} else if state == nil {
+			_ = s.streakRepo.UpsertState(ctx, &models.UserStreakState{
+				UserID:         userID,
+				CycleStartDate: now.Format("2006-01-02"),
+				CycleEndDate:   now.AddDate(0, 0, 6).Format("2006-01-02"),
+				IsFrozen:       true,
+			})
+		}
+	}
+
 	return &models.UseItemResult{
 		ItemID:            itemID,
 		QuantityConsumed:  quantity,
@@ -158,6 +173,7 @@ func (s *inventoryService) UseItem(ctx context.Context, userID uuid.UUID, itemID
 		Details:           fmt.Sprintf("Activated %s effect until %s", item.Name, expiresAt.Format(time.RFC3339)),
 	}, nil
 }
+
 
 func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.UUID, targetDate string, workoutType string, hours float64, loc *time.Location) (*models.RestoreShieldResult, error) {
 	if targetDate == "" {
