@@ -21,7 +21,7 @@ func NewUserRepository(db *sql.DB) UserRepository {
 
 func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
 		FROM users
 		WHERE auth_user_id = $1
 	`
@@ -35,6 +35,7 @@ func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID
 		&u.Provider,
 		&u.Timezone,
 		&u.WeeklyPlanID,
+		&u.QueuedWeeklyPlanID,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
@@ -49,7 +50,7 @@ func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID
 
 func (r *postgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -63,6 +64,7 @@ func (r *postgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		&u.Provider,
 		&u.Timezone,
 		&u.WeeklyPlanID,
+		&u.QueuedWeeklyPlanID,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
@@ -81,15 +83,15 @@ func (r *postgresUserRepository) Create(ctx context.Context, user *models.User) 
 		tz = "UTC"
 	}
 	query := `
-		INSERT INTO users (auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (auth_user_id) DO UPDATE SET
 			email = EXCLUDED.email,
 			name = COALESCE(EXCLUDED.name, users.name),
 			avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 			provider = COALESCE(EXCLUDED.provider, users.provider),
 			updated_at = NOW()
-		RETURNING id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, created_at, updated_at
+		RETURNING id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
 	`
 	err := r.db.QueryRowContext(
 		ctx,
@@ -101,6 +103,7 @@ func (r *postgresUserRepository) Create(ctx context.Context, user *models.User) 
 		user.Provider,
 		tz,
 		user.WeeklyPlanID,
+		user.QueuedWeeklyPlanID,
 	).Scan(
 		&user.ID,
 		&user.AuthUserID,
@@ -110,6 +113,7 @@ func (r *postgresUserRepository) Create(ctx context.Context, user *models.User) 
 		&user.Provider,
 		&user.Timezone,
 		&user.WeeklyPlanID,
+		&user.QueuedWeeklyPlanID,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -128,6 +132,27 @@ func (r *postgresUserRepository) UpdateWeeklyPlan(ctx context.Context, userID uu
 	result, err := r.db.ExecContext(ctx, query, planID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update user weekly plan: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found for id %s", userID)
+	}
+	return nil
+}
+
+func (r *postgresUserRepository) SetQueuedPlan(ctx context.Context, userID uuid.UUID, planID *string) error {
+	query := `
+		UPDATE users
+		SET queued_weekly_plan_id = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	result, err := r.db.ExecContext(ctx, query, planID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update user queued weekly plan: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -163,7 +188,7 @@ func (r *postgresUserRepository) UpdateTimezone(ctx context.Context, userID uuid
 
 func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -177,6 +202,7 @@ func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (
 		&u.Provider,
 		&u.Timezone,
 		&u.WeeklyPlanID,
+		&u.QueuedWeeklyPlanID,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)

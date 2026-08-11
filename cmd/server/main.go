@@ -41,17 +41,20 @@ func main() {
 	var userRepo repository.UserRepository
 	var planRepo repository.PlanRepository
 	var logRepo repository.GymLogRepository
+	var streakRepo repository.StreakRepository
 
 	if db != nil {
 		userRepo = repository.NewUserRepository(db)
 		planRepo = repository.NewPlanRepository(db)
 		logRepo = repository.NewGymLogRepository(db)
+		streakRepo = repository.NewStreakRepository(db)
 	}
 
 	authService := service.NewAuthService(userRepo, planRepo)
-	planService := service.NewPlanService(planRepo)
+	planService := service.NewPlanService(planRepo, userRepo)
 	logService := service.NewGymLogService(logRepo, userRepo, planRepo)
 	statsService := service.NewStatsService(userRepo, planRepo, logRepo)
+	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo)
 
 	// 4. Initialize Handlers
 	healthHandler := handler.NewHealthHandler()
@@ -59,6 +62,7 @@ func main() {
 	planHandler := handler.NewPlanHandler(planService)
 	logHandler := handler.NewLogHandler(logService, authService)
 	statsHandler := handler.NewStatsHandler(statsService, authService)
+	streakHandler := handler.NewStreakHandler(streakService)
 
 	// 5. Initialize Gin Router
 	router := gin.Default()
@@ -75,6 +79,13 @@ func main() {
 		apiV1.GET("/health", healthHandler.HealthCheck)
 		apiV1.GET("/plans", planHandler.GetPlans)
 
+		// Plans Group (Protected queue route)
+		plansGroup := apiV1.Group("/plans")
+		plansGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		{
+			plansGroup.PUT("/queue", planHandler.QueuePlan)
+		}
+
 		// Auth Group (Protected)
 		authGroup := apiV1.Group("/auth")
 		authGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
@@ -85,6 +96,13 @@ func main() {
 			authGroup.POST("/timezone", authHandler.UpdateTimezone)
 			authGroup.PUT("/timezone", authHandler.UpdateTimezone)
 			authGroup.POST("/logout", authHandler.Logout)
+		}
+
+		// Streak & Cycle Group (Protected)
+		streakGroup := apiV1.Group("/streak")
+		streakGroup.Use(middleware.AuthMiddleware(cfg.SupabaseJWTSecret))
+		{
+			streakGroup.GET("", streakHandler.GetStreak)
 		}
 
 		// Gym Logs Group (Protected)

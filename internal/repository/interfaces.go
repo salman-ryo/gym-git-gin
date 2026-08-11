@@ -15,6 +15,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
 	UpdateWeeklyPlan(ctx context.Context, userID uuid.UUID, planID string) error
+	SetQueuedPlan(ctx context.Context, userID uuid.UUID, planID *string) error
 	UpdateTimezone(ctx context.Context, userID uuid.UUID, timezone string) error
 	UpdateAuthUserID(ctx context.Context, id uuid.UUID, authUserID uuid.UUID) error
 }
@@ -33,4 +34,10 @@ type GymLogRepository interface {
 	UpsertLog(ctx context.Context, log *models.GymLog) error
 	DeleteByDate(ctx context.Context, userID uuid.UUID, date string) error
 	ResetDemoLogs(ctx context.Context, userID uuid.UUID, logs []models.GymLog) error
+}
+
+// StreakRepository defines database operations for 7-day cycle streak state
+type StreakRepository interface {
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserStreakState, error)
+	UpsertState(ctx context.Context, state *models.UserStreakState) error
 }

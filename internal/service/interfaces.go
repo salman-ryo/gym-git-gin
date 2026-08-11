@@ -20,6 +20,7 @@ type AuthService interface {
 type PlanService interface {
 	GetAllPlans(ctx context.Context) ([]models.WeeklyPlan, error)
 	GetPlanByID(ctx context.Context, id string) (*models.WeeklyPlan, error)
+	QueuePlanChange(ctx context.Context, userID uuid.UUID, planID string) error
 }
 
 // GymLogService defines business logic for managing workout logs
@@ -34,5 +35,10 @@ type GymLogService interface {
 type StatsService interface {
 	GetDashboardStats(ctx context.Context, userID uuid.UUID, days int) (*models.DashboardStatsResponse, error)
 	GetPowerStats(ctx context.Context, userID uuid.UUID, days int) (*models.PowerStatsResponse, error)
+}
+
+// StreakService defines business logic for 7-day cycle streak states & rest tokens
+type StreakService interface {
+	GetStreakState(ctx context.Context, userID uuid.UUID, loc *time.Location) (*models.StreakResponse, error)
 }
 
