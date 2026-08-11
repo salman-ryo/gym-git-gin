@@ -1,6 +1,7 @@
 package models
 
 import (
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,16 @@ func SendError(c *gin.Context, statusCode int, code string, message string, deta
 	if details == nil {
 		details = []string{}
 	}
+
+	log.Printf("[API ERROR] %s %s | Status: %d | Code: %s | Message: %s | Details: %v",
+		c.Request.Method,
+		c.Request.URL.RequestURI(),
+		statusCode,
+		code,
+		message,
+		details,
+	)
+
 	c.JSON(statusCode, ErrorResponse{
 		Success: false,
 		Error: ErrorDetails{
