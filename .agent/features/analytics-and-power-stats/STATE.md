@@ -24,5 +24,7 @@
 | `2026-08-08T19:15:00Z` | `03-stats-handlers-and-endpoints` | Registered `/api/v1/stats` and `/api/v1/stats/power` routes | Envelopes match frontend contract requirements |
 | `2026-08-11T18:22:00Z` | `bug-fix-streak-restore` | Implemented `is_restored` column, updated `RedeemRestoreShield` and `CalculateScientificStreak` | All unit tests passed (`go test -v ./...`) |
 | `2026-08-11T18:56:00Z` | `bug-fix-cycle-days-remaining` | Formatted cycle dates using TO_CHAR in SQL and added string length normalization in streak service | All unit tests passed (`go test -v ./...`) |
+| `2026-08-11T19:21:00Z` | `bug-fix-restore-preservation` | Fixed log upsert ON CONFLICT clause to preserve is_restored status when edited normally | All unit tests passed (`go test -v ./...`) |
+
 
 

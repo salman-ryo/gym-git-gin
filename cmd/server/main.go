@@ -58,7 +58,7 @@ func main() {
 
 	authService := service.NewAuthService(userRepo, planRepo)
 	planService := service.NewPlanService(planRepo, userRepo)
-	logService := service.NewGymLogService(logRepo, userRepo, planRepo)
+	logService := service.NewGymLogService(logRepo, userRepo, planRepo, streakRepo)
 	statsService := service.NewStatsService(userRepo, planRepo, logRepo)
 	streakService := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, inventoryRepo)
 	inventoryService := service.NewInventoryService(itemRepo, inventoryRepo, logRepo, streakRepo, userRepo)

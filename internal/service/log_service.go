@@ -15,18 +15,55 @@ import (
 )
 
 type gymLogService struct {
-	logRepo  repository.GymLogRepository
-	userRepo repository.UserRepository
-	planRepo repository.PlanRepository
+	logRepo    repository.GymLogRepository
+	userRepo   repository.UserRepository
+	planRepo   repository.PlanRepository
+	streakRepo repository.StreakRepository
 }
 
 // NewGymLogService creates a new GymLogService instance
-func NewGymLogService(logRepo repository.GymLogRepository, userRepo repository.UserRepository, planRepo repository.PlanRepository) GymLogService {
+func NewGymLogService(
+	logRepo repository.GymLogRepository,
+	userRepo repository.UserRepository,
+	planRepo repository.PlanRepository,
+	streakRepo repository.StreakRepository,
+) GymLogService {
 	return &gymLogService{
-		logRepo:  logRepo,
-		userRepo: userRepo,
-		planRepo: planRepo,
+		logRepo:    logRepo,
+		userRepo:   userRepo,
+		planRepo:   planRepo,
+		streakRepo: streakRepo,
 	}
+}
+
+func (s *gymLogService) checkPastLogRestriction(ctx context.Context, userID uuid.UUID, date string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil || user.WeeklyPlanID == nil || *user.WeeklyPlanID == "" {
+		return nil
+	}
+
+	loc := time.UTC
+	if user.Timezone != "" {
+		loc = timezone.LoadLocation(user.Timezone)
+	}
+	userToday := timezone.GetUserToday(loc)
+	todayStr := userToday.Format("2006-01-02")
+
+	if date >= todayStr {
+		return nil
+	}
+
+	state, err := s.streakRepo.GetByUserID(ctx, userID)
+	if err != nil || state == nil {
+		return nil
+	}
+
+	// Restrict if the date is within the active plan cycle (current week/cycle)
+	if date >= state.CycleStartDate {
+		return fmt.Errorf("past workout logs within the active plan cycle cannot be added, edited, or deleted normally. please use a Restore Shield to recover missed days")
+	}
+
+	return nil
 }
 
 func (s *gymLogService) GetLogs(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, workoutType *string) ([]models.GymLog, error) {
@@ -38,6 +75,10 @@ func (s *gymLogService) GetLogs(ctx context.Context, userID uuid.UUID, startDate
 }
 
 func (s *gymLogService) SaveLog(ctx context.Context, userID uuid.UUID, date string, hours float64, workoutType string, notes *string) (*models.GymLog, error) {
+	if err := s.checkPastLogRestriction(ctx, userID, date); err != nil {
+		return nil, err
+	}
+
 	// Rule: If hours <= 0 and workoutType is not a Rest day, delete the log for that date
 	if hours <= 0 && strings.ToLower(workoutType) != "rest" {
 		if err := s.logRepo.DeleteByDate(ctx, userID, date); err != nil {
@@ -66,6 +107,10 @@ func (s *gymLogService) SaveLog(ctx context.Context, userID uuid.UUID, date stri
 }
 
 func (s *gymLogService) DeleteLog(ctx context.Context, userID uuid.UUID, date string) error {
+	if err := s.checkPastLogRestriction(ctx, userID, date); err != nil {
+		return err
+	}
+
 	if err := s.logRepo.DeleteByDate(ctx, userID, date); err != nil {
 		return fmt.Errorf("failed deleting log: %w", err)
 	}

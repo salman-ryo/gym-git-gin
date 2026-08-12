@@ -123,7 +123,7 @@ func (r *postgresGymLogRepository) UpsertLog(ctx context.Context, log *models.Gy
 			hours = EXCLUDED.hours,
 			workout_type = EXCLUDED.workout_type,
 			notes = EXCLUDED.notes,
-			is_restored = EXCLUDED.is_restored,
+			is_restored = EXCLUDED.is_restored OR gym_logs.is_restored,
 			updated_at = NOW()
 		RETURNING id, created_at, updated_at
 	`

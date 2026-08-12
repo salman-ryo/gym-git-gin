@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"gymgit/backend/internal/middleware"
@@ -91,6 +92,10 @@ func (h *LogHandler) UpsertLog(c *gin.Context) {
 
 	log, err := h.logService.SaveLog(c.Request.Context(), userID, req.Date, req.Hours, req.WorkoutType, req.Notes)
 	if err != nil {
+		if strings.Contains(err.Error(), "active plan cycle") {
+			models.SendError(c, http.StatusBadRequest, "PAST_LOGS_RESTRICTED", err.Error(), nil)
+			return
+		}
 		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to save gym log", []string{err.Error()})
 		return
 	}
@@ -124,6 +129,10 @@ func (h *LogHandler) DeleteLog(c *gin.Context) {
 	}
 
 	if err := h.logService.DeleteLog(c.Request.Context(), userID, date); err != nil {
+		if strings.Contains(err.Error(), "active plan cycle") {
+			models.SendError(c, http.StatusBadRequest, "PAST_LOGS_RESTRICTED", err.Error(), nil)
+			return
+		}
 		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete gym log", []string{err.Error()})
 		return
 	}
