@@ -142,9 +142,6 @@ func (s *rewardService) GetRoadmap(ctx context.Context, userID uuid.UUID, planID
 }
 
 func (s *rewardService) ClaimReward(ctx context.Context, userID uuid.UUID, planID string, streakTarget int, itemID string) (*models.ClaimRewardResult, error) {
-	if planID == "" {
-		planID = "default-streak-roadmap"
-	}
 	if streakTarget <= 0 || itemID == "" {
 		return nil, fmt.Errorf("streak_target and item_id are required to claim a reward")
 	}
@@ -153,6 +150,22 @@ func (s *rewardService) ClaimReward(ctx context.Context, userID uuid.UUID, planI
 	item, err := s.itemRepo.GetByID(ctx, itemID)
 	if err != nil || item == nil {
 		return nil, fmt.Errorf("invalid item_id '%s'", itemID)
+	}
+
+	// Resolve active reward plan, fallback to default-streak-roadmap if not found or inactive
+	var plan *models.RewardPlan
+	if planID != "" {
+		plan, err = s.rewardRepo.GetActiveRewardPlan(ctx, planID)
+	}
+	if err != nil || plan == nil {
+		planID = "default-streak-roadmap"
+		plan, err = s.rewardRepo.GetActiveRewardPlan(ctx, planID)
+		if err != nil {
+			return nil, fmt.Errorf("failed fetching default reward plan: %w", err)
+		}
+		if plan == nil {
+			return nil, fmt.Errorf("default reward plan not found")
+		}
 	}
 
 	// 2. Verify milestone target exists in plan
