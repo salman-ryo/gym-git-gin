@@ -56,6 +56,14 @@ func (h *AuthHandler) Bootstrap(c *gin.Context) {
 		return
 	}
 
+	if user != nil {
+		loc := middleware.GetUserLocationFromContext(c)
+		if user.Timezone != loc.String() {
+			_, _ = h.authService.UpdateTimezone(c.Request.Context(), user.ID, loc.String())
+			user.Timezone = loc.String()
+		}
+	}
+
 	log.Printf("[Bootstrap] Successfully bootstrapped profile for user=%s", user.ID)
 	models.SendSuccess(c, http.StatusOK, user, "Profile bootstrapped successfully")
 }
@@ -99,6 +107,11 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	}
 
 	loc := middleware.GetUserLocationFromContext(c)
+	if user != nil && user.Timezone != loc.String() {
+		_, _ = h.authService.UpdateTimezone(c.Request.Context(), user.ID, loc.String())
+		user.Timezone = loc.String()
+	}
+
 	var streakState *models.StreakResponse
 	if h.streakService != nil && user != nil {
 		streakState, _ = h.streakService.GetStreakState(c.Request.Context(), user.ID, loc)
