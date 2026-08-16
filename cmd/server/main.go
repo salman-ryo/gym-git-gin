@@ -142,6 +142,8 @@ func main() {
 			authGroup.PUT("/plan", authHandler.UpdatePlan)
 			authGroup.POST("/timezone", authHandler.UpdateTimezone)
 			authGroup.PUT("/timezone", authHandler.UpdateTimezone)
+			authGroup.POST("/checkin-snooze", authHandler.SnoozeCheckin)
+			authGroup.DELETE("/checkin-snooze", authHandler.ClearCheckinSnooze)
 			authGroup.POST("/logout", authHandler.Logout)
 		}
 

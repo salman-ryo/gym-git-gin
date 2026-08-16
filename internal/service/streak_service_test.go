@@ -50,6 +50,20 @@ func (m *mockUserRepo) UpdateTimezone(ctx context.Context, userID uuid.UUID, tz 
 func (m *mockUserRepo) UpdateAuthUserID(ctx context.Context, id uuid.UUID, authUserID uuid.UUID) error {
 	return nil
 }
+func (m *mockUserRepo) SetCheckinSnooze(ctx context.Context, userID uuid.UUID, dateStr string, snoozedAt time.Time) error {
+	if m.user != nil {
+		m.user.CheckinSnoozedDate = &dateStr
+		m.user.CheckinSnoozedAt = &snoozedAt
+	}
+	return nil
+}
+func (m *mockUserRepo) ClearCheckinSnooze(ctx context.Context, userID uuid.UUID) error {
+	if m.user != nil {
+		m.user.CheckinSnoozedDate = nil
+		m.user.CheckinSnoozedAt = nil
+	}
+	return nil
+}
 
 type mockPlanRepo struct {
 	plans map[string]*models.WeeklyPlan
@@ -78,6 +92,17 @@ type mockLogRepo struct {
 }
 
 func (m *mockLogRepo) GetLogs(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, workoutType *string) ([]models.GymLog, error) {
+	if startDate != nil && endDate != nil {
+		var filtered []models.GymLog
+		sStr := startDate.Format("2006-01-02")
+		eStr := endDate.Format("2006-01-02")
+		for _, l := range m.logs {
+			if l.Date >= sStr && l.Date <= eStr {
+				filtered = append(filtered, l)
+			}
+		}
+		return filtered, nil
+	}
 	return m.logs, nil
 }
 func (m *mockLogRepo) GetByDate(ctx context.Context, userID uuid.UUID, date string) (*models.GymLog, error) {
@@ -206,12 +231,47 @@ func TestStreakService_StreakWarningAndBrokenEvents(t *testing.T) {
 		t.Errorf("expected previous streak 15, got %d", resp.StreakBrokenEvent.PreviousStreak)
 	}
 
-	if resp.StreakWarningEvent == nil {
-		t.Fatalf("expected StreakWarningEvent to be non-nil when rest tokens are exhausted")
+	// When CurrentStreak is 0, StreakWarningEvent must be nil (no streak to decay)
+	if resp.StreakWarningEvent != nil {
+		t.Fatalf("expected StreakWarningEvent to be nil when streak is already 0")
 	}
 
-	if !resp.StreakWarningEvent.IsAtRisk {
-		t.Errorf("expected IsAtRisk to be true")
+	// 2. Test active streak at risk (CurrentStreak > 0 and 0 rest tokens remaining)
+	today := timezone.GetUserToday(loc)
+	var activeLogs []models.GymLog
+	for i := 1; i <= 10; i++ {
+		activeLogs = append(activeLogs, models.GymLog{
+			UserID:      userID,
+			Date:        today.AddDate(0, 0, -i).Format("2006-01-02"),
+			Hours:       1.0,
+			WorkoutType: "Push",
+		})
+	}
+	activeLogRepo := &mockLogRepo{logs: activeLogs}
+	activeStreakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:          userID,
+			CurrentStreak:   10,
+			LongestStreak:   15,
+			CycleStartDate:  today.AddDate(0, 0, -3).Format("2006-01-02"),
+			CycleEndDate:    today.AddDate(0, 0, 3).Format("2006-01-02"),
+			RestTokensTotal: 1,
+			RestTokensUsed:  1,
+			IsFrozen:        false,
+		},
+	}
+	activeStreakSvc := service.NewStreakService(activeStreakRepo, userRepo, planRepo, activeLogRepo, nil)
+	activeResp, errActive := activeStreakSvc.GetStreakState(context.Background(), userID, loc)
+	if errActive != nil {
+		t.Fatalf("unexpected error: %v", errActive)
+	}
+
+	if activeResp.StreakWarningEvent == nil {
+		t.Fatalf("expected StreakWarningEvent to be non-nil when active streak has exhausted rest tokens")
+	}
+
+	if !activeResp.StreakWarningEvent.IsAtRisk {
+		t.Errorf("expected IsAtRisk to be true for active streak")
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gymgit/backend/internal/models"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,7 +22,7 @@ func NewUserRepository(db *sql.DB) UserRepository {
 
 func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, checkin_snoozed_date, checkin_snoozed_at, created_at, updated_at
 		FROM users
 		WHERE auth_user_id = $1
 	`
@@ -36,6 +37,8 @@ func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID
 		&u.Timezone,
 		&u.WeeklyPlanID,
 		&u.QueuedWeeklyPlanID,
+		&u.CheckinSnoozedDate,
+		&u.CheckinSnoozedAt,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
@@ -50,7 +53,7 @@ func (r *postgresUserRepository) GetByAuthUserID(ctx context.Context, authUserID
 
 func (r *postgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, checkin_snoozed_date, checkin_snoozed_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -65,6 +68,8 @@ func (r *postgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		&u.Timezone,
 		&u.WeeklyPlanID,
 		&u.QueuedWeeklyPlanID,
+		&u.CheckinSnoozedDate,
+		&u.CheckinSnoozedAt,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
@@ -91,7 +96,7 @@ func (r *postgresUserRepository) Create(ctx context.Context, user *models.User) 
 			avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
 			provider = COALESCE(EXCLUDED.provider, users.provider),
 			updated_at = NOW()
-		RETURNING id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
+		RETURNING id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, checkin_snoozed_date, checkin_snoozed_at, created_at, updated_at
 	`
 	err := r.db.QueryRowContext(
 		ctx,
@@ -114,6 +119,8 @@ func (r *postgresUserRepository) Create(ctx context.Context, user *models.User) 
 		&user.Timezone,
 		&user.WeeklyPlanID,
 		&user.QueuedWeeklyPlanID,
+		&user.CheckinSnoozedDate,
+		&user.CheckinSnoozedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -188,7 +195,7 @@ func (r *postgresUserRepository) UpdateTimezone(ctx context.Context, userID uuid
 
 func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `
-		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, created_at, updated_at
+		SELECT id, auth_user_id, email, name, avatar_url, provider, timezone, weekly_plan_id, queued_weekly_plan_id, checkin_snoozed_date, checkin_snoozed_at, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -203,6 +210,8 @@ func (r *postgresUserRepository) GetByEmail(ctx context.Context, email string) (
 		&u.Timezone,
 		&u.WeeklyPlanID,
 		&u.QueuedWeeklyPlanID,
+		&u.CheckinSnoozedDate,
+		&u.CheckinSnoozedAt,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
@@ -235,3 +244,38 @@ func (r *postgresUserRepository) UpdateAuthUserID(ctx context.Context, id uuid.U
 	}
 	return nil
 }
+
+func (r *postgresUserRepository) SetCheckinSnooze(ctx context.Context, userID uuid.UUID, dateStr string, snoozedAt time.Time) error {
+	query := `
+		UPDATE users
+		SET checkin_snoozed_date = $1, checkin_snoozed_at = $2, updated_at = NOW()
+		WHERE id = $3
+	`
+	result, err := r.db.ExecContext(ctx, query, dateStr, snoozedAt, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update user checkin snooze: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found for id %s", userID)
+	}
+	return nil
+}
+
+func (r *postgresUserRepository) ClearCheckinSnooze(ctx context.Context, userID uuid.UUID) error {
+	query := `
+		UPDATE users
+		SET checkin_snoozed_date = NULL, checkin_snoozed_at = NULL, updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to clear user checkin snooze: %w", err)
+	}
+	return nil
+}
+

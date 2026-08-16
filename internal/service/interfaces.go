@@ -14,6 +14,9 @@ type AuthService interface {
 	GetProfile(ctx context.Context, userID uuid.UUID) (*models.User, *models.WeeklyPlan, error)
 	UpdatePlan(ctx context.Context, userID uuid.UUID, planID string, customName string, customDesc string, categories []string) error
 	UpdateTimezone(ctx context.Context, userID uuid.UUID, tz string) (*models.User, error)
+	SetCheckinSnooze(ctx context.Context, userID uuid.UUID, dateStr string) (*models.CheckinSnoozeStatus, error)
+	GetCheckinSnoozeStatus(ctx context.Context, user *models.User) *models.CheckinSnoozeStatus
+	ClearCheckinSnooze(ctx context.Context, userID uuid.UUID) error
 }
 
 // PlanService defines business logic for weekly plans

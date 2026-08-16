@@ -224,7 +224,7 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		hoursRemaining = 0
 	}
 
-	if !state.IsFrozen && !todayLogLogged && remainingRest == 0 {
+	if !state.IsFrozen && !todayLogLogged && remainingRest == 0 && state.CurrentStreak > 0 {
 		warningEvent = &models.StreakWarningEvent{
 			IsAtRisk:       true,
 			HoursRemaining: hoursRemaining,

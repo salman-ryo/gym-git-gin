@@ -87,6 +87,7 @@ func (m *mockInventoryRepo) DeactivateExpiredEffects(ctx context.Context, userID
 	return nil
 }
 
+
 func TestInventoryService_UseTimeBasedItem(t *testing.T) {
 	userID := uuid.New()
 	itemRepo := &mockItemRepo{

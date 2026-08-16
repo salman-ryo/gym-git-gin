@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gymgit/backend/internal/models"
 	"gymgit/backend/internal/repository"
@@ -154,3 +155,51 @@ func (s *authService) UpdateTimezone(ctx context.Context, userID uuid.UUID, tz s
 	}
 	return updatedUser, nil
 }
+
+func (s *authService) SetCheckinSnooze(ctx context.Context, userID uuid.UUID, dateStr string) (*models.CheckinSnoozeStatus, error) {
+	now := time.Now().UTC()
+	if err := s.userRepo.SetCheckinSnooze(ctx, userID, dateStr, now); err != nil {
+		return nil, fmt.Errorf("failed setting checkin snooze: %w", err)
+	}
+	return &models.CheckinSnoozeStatus{
+		Date:             dateStr,
+		SnoozedAt:        &now,
+		IsSnoozed:        true,
+		RemainingSeconds: 1800, // 30 minutes
+	}, nil
+}
+
+func (s *authService) ClearCheckinSnooze(ctx context.Context, userID uuid.UUID) error {
+	return s.userRepo.ClearCheckinSnooze(ctx, userID)
+}
+
+func (s *authService) GetCheckinSnoozeStatus(ctx context.Context, user *models.User) *models.CheckinSnoozeStatus {
+	if user == nil || user.CheckinSnoozedDate == nil || user.CheckinSnoozedAt == nil {
+		return &models.CheckinSnoozeStatus{
+			IsSnoozed:        false,
+			RemainingSeconds: 0,
+		}
+	}
+
+	elapsed := time.Since(*user.CheckinSnoozedAt)
+	snoozeDuration := 30 * time.Minute
+
+	if elapsed < snoozeDuration {
+		remaining := int((snoozeDuration - elapsed).Seconds())
+		return &models.CheckinSnoozeStatus{
+			Date:             *user.CheckinSnoozedDate,
+			SnoozedAt:        user.CheckinSnoozedAt,
+			IsSnoozed:        true,
+			RemainingSeconds: remaining,
+		}
+	}
+
+	// Snooze expired: asynchronously clear
+	_ = s.userRepo.ClearCheckinSnooze(ctx, user.ID)
+	return &models.CheckinSnoozeStatus{
+		Date:             *user.CheckinSnoozedDate,
+		IsSnoozed:        false,
+		RemainingSeconds: 0,
+	}
+}
+

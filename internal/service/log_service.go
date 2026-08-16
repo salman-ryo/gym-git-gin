@@ -103,6 +103,9 @@ func (s *gymLogService) SaveLog(ctx context.Context, userID uuid.UUID, date stri
 		return nil, fmt.Errorf("failed saving log: %w", err)
 	}
 
+	// Clear any active checkin snooze once user logs session or rest day
+	_ = s.userRepo.ClearCheckinSnooze(ctx, userID)
+
 	return log, nil
 }
 

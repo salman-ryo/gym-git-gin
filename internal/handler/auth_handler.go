@@ -7,6 +7,7 @@ import (
 	"gymgit/backend/internal/middleware"
 	"gymgit/backend/internal/models"
 	"gymgit/backend/internal/service"
+	"gymgit/backend/internal/timezone"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -117,6 +118,11 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		streakState, _ = h.streakService.GetStreakState(c.Request.Context(), user.ID, loc)
 	}
 
+	var snoozeStatus *models.CheckinSnoozeStatus
+	if user != nil {
+		snoozeStatus = h.authService.GetCheckinSnoozeStatus(c.Request.Context(), user)
+	}
+
 	respData := gin.H{
 		"user": user,
 		"plan": activePlan,
@@ -124,8 +130,72 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	if streakState != nil {
 		respData["streak"] = streakState
 	}
+	if snoozeStatus != nil {
+		respData["checkin_snooze"] = snoozeStatus
+	}
 
 	models.SendSuccess(c, http.StatusOK, respData, "User profile retrieved successfully")
+}
+
+type SnoozeCheckinRequest struct {
+	Date string `json:"date"`
+}
+
+// SnoozeCheckin records a 30-minute checkin snooze on the backend
+func (h *AuthHandler) SnoozeCheckin(c *gin.Context) {
+	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+		return
+	}
+	authUserID := authUserIDVal.(uuid.UUID)
+
+	var req SnoozeCheckinRequest
+	_ = c.ShouldBindJSON(&req)
+
+	user, _, err := h.authService.GetProfile(c.Request.Context(), authUserID)
+	if err != nil || user == nil {
+		models.SendError(c, http.StatusNotFound, "NOT_FOUND", "User profile not found", nil)
+		return
+	}
+
+	dateStr := req.Date
+	if dateStr == "" {
+		loc := middleware.GetUserLocationFromContext(c)
+		userToday := timezone.GetUserToday(loc)
+		dateStr = userToday.Format("2006-01-02")
+	}
+
+	status, err := h.authService.SetCheckinSnooze(c.Request.Context(), user.ID, dateStr)
+	if err != nil {
+		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to snooze check-in", []string{err.Error()})
+		return
+	}
+
+	models.SendSuccess(c, http.StatusOK, status, "Check-in snoozed successfully")
+}
+
+// ClearCheckinSnooze removes any active checkin snooze on the backend
+func (h *AuthHandler) ClearCheckinSnooze(c *gin.Context) {
+	authUserIDVal, exists := c.Get(middleware.ContextAuthUserIDKey)
+	if !exists {
+		models.SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authenticated user context", nil)
+		return
+	}
+	authUserID := authUserIDVal.(uuid.UUID)
+
+	user, _, err := h.authService.GetProfile(c.Request.Context(), authUserID)
+	if err != nil || user == nil {
+		models.SendError(c, http.StatusNotFound, "NOT_FOUND", "User profile not found", nil)
+		return
+	}
+
+	if err := h.authService.ClearCheckinSnooze(c.Request.Context(), user.ID); err != nil {
+		models.SendError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to clear check-in snooze", []string{err.Error()})
+		return
+	}
+
+	models.SendSuccess(c, http.StatusOK, nil, "Check-in snooze cleared")
 }
 
 

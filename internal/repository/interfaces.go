@@ -18,6 +18,8 @@ type UserRepository interface {
 	SetQueuedPlan(ctx context.Context, userID uuid.UUID, planID *string) error
 	UpdateTimezone(ctx context.Context, userID uuid.UUID, timezone string) error
 	UpdateAuthUserID(ctx context.Context, id uuid.UUID, authUserID uuid.UUID) error
+	SetCheckinSnooze(ctx context.Context, userID uuid.UUID, dateStr string, snoozedAt time.Time) error
+	ClearCheckinSnooze(ctx context.Context, userID uuid.UUID) error
 }
 
 // PlanRepository defines database operations for weekly plans
