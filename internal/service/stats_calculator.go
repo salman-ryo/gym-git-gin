@@ -54,7 +54,15 @@ func IsDateCompliant(targetDate time.Time, logsMap map[string]float64, targetDay
 	return activeInWindow >= requiredSessions
 }
 
-// CalculateScientificStreak calculates current streak and compliance rate
+// StreakGapAnalysis represents the gap diagnosis between the last streak date and today
+type StreakGapAnalysis struct {
+	LastStreakDate  string
+	PreviousStreak  int
+	MissedDates     []string
+	MissedDaysCount int
+}
+
+// CalculateScientificStreak calculates current streak and compliance rate with Today Grace Window
 func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, daysWindow int, today time.Time) models.StreakStats {
 	if daysWindow <= 0 {
 		daysWindow = 30
@@ -74,15 +82,36 @@ func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, days
 		}
 	}
 
-	// 1. Current Streak: count backward from today until non-compliant day
+	// 1. Current Streak calculation with Today's in-progress Grace Window
 	currentStreak := 0
-	currDate := today
-	for {
-		if IsDateCompliant(currDate, logsMap, targetDaysPerWeek) {
-			currentStreak++
-			currDate = currDate.AddDate(0, 0, -1)
+	if IsDateCompliant(today, logsMap, targetDaysPerWeek) {
+		// Workout completed today or compliant rest day -> count backward starting from today
+		currDate := today
+		for {
+			if IsDateCompliant(currDate, logsMap, targetDaysPerWeek) {
+				currentStreak++
+				currDate = currDate.AddDate(0, 0, -1)
+			} else {
+				break
+			}
+		}
+	} else {
+		// Today is unlogged and in-progress -> check yesterday
+		yesterday := today.AddDate(0, 0, -1)
+		if IsDateCompliant(yesterday, logsMap, targetDaysPerWeek) {
+			// Streak is still active from yesterday pending today's workout!
+			currDate := yesterday
+			for {
+				if IsDateCompliant(currDate, logsMap, targetDaysPerWeek) {
+					currentStreak++
+					currDate = currDate.AddDate(0, 0, -1)
+				} else {
+					break
+				}
+			}
 		} else {
-			break
+			// Yesterday was also non-compliant -> streak is broken
+			currentStreak = 0
 		}
 	}
 
@@ -109,6 +138,73 @@ func CalculateScientificStreak(logs []models.GymLog, targetDaysPerWeek int, days
 		TotalCompliantDays: totalCompliantDays,
 		TotalTrackedDays:   daysWindow,
 		TotalActiveDays:    totalActiveDays,
+	}
+}
+
+// FindLastStreakDateAndGap scans backwards from yesterday to find the exact last compliant streak date and missed gap
+func FindLastStreakDateAndGap(logs []models.GymLog, targetDaysPerWeek int, today time.Time) StreakGapAnalysis {
+	if today.IsZero() {
+		today = time.Now().UTC()
+	}
+
+	logsMap := make(map[string]float64)
+	for _, l := range logs {
+		if l.Hours > 0 {
+			isOnTime := l.CreatedAt.IsZero() || l.Date >= l.CreatedAt.In(today.Location()).Format("2006-01-02")
+			if l.IsRestored || isOnTime {
+				logsMap[l.Date] = l.Hours
+			}
+		}
+	}
+
+	yesterday := today.AddDate(0, 0, -1)
+	var lastCompliantDate *time.Time
+	var missedDates []string
+
+	// Scan backward up to 365 days to locate the last compliant day
+	for i := 0; i < 365; i++ {
+		checkDate := yesterday.AddDate(0, 0, -i)
+		if IsDateCompliant(checkDate, logsMap, targetDaysPerWeek) {
+			t := checkDate
+			lastCompliantDate = &t
+			break
+		} else {
+			missedDates = append(missedDates, checkDate.Format("2006-01-02"))
+		}
+	}
+
+	if lastCompliantDate == nil {
+		// Graceful fallback for synthetic/legacy states where logs are not stored
+		return StreakGapAnalysis{
+			LastStreakDate:  yesterday.AddDate(0, 0, -1).Format("2006-01-02"),
+			PreviousStreak:  0,
+			MissedDates:     []string{yesterday.Format("2006-01-02")},
+			MissedDaysCount: 1,
+		}
+	}
+
+	// Reverse missedDates so they appear chronologically (oldest missed -> newest missed)
+	for i, j := 0, len(missedDates)-1; i < j; i, j = i+1, j-1 {
+		missedDates[i], missedDates[j] = missedDates[j], missedDates[i]
+	}
+
+	// Calculate previous streak length leading up to lastCompliantDate
+	prevStreak := 0
+	currDate := *lastCompliantDate
+	for {
+		if IsDateCompliant(currDate, logsMap, targetDaysPerWeek) {
+			prevStreak++
+			currDate = currDate.AddDate(0, 0, -1)
+		} else {
+			break
+		}
+	}
+
+	return StreakGapAnalysis{
+		LastStreakDate:  lastCompliantDate.Format("2006-01-02"),
+		PreviousStreak:  prevStreak,
+		MissedDates:     missedDates,
+		MissedDaysCount: len(missedDates),
 	}
 }
 

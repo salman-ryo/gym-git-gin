@@ -58,6 +58,9 @@ func (m *mockInventoryRepo) GetItemQuantity(ctx context.Context, userID uuid.UUI
 }
 func (m *mockInventoryRepo) AddItemQuantity(ctx context.Context, userID uuid.UUID, itemID string, delta int) (int, error) {
 	m.quantities[itemID] += delta
+	if m.quantities[itemID] > 9 {
+		m.quantities[itemID] = 9
+	}
 	return m.quantities[itemID], nil
 }
 func (m *mockInventoryRepo) DeductItemQuantity(ctx context.Context, userID uuid.UUID, itemID string, delta int) (int, error) {
@@ -123,7 +126,7 @@ func TestInventoryService_UseTimeBasedItem(t *testing.T) {
 	}
 }
 
-func TestInventoryService_RedeemRestoreShield_LookbackValidation(t *testing.T) {
+func TestInventoryService_RedeemRestoreShield_MultiDayValidation(t *testing.T) {
 	userID := uuid.New()
 	itemRepo := &mockItemRepo{
 		items: map[string]*models.Item{
@@ -145,24 +148,41 @@ func TestInventoryService_RedeemRestoreShield_LookbackValidation(t *testing.T) {
 	loc := timezone.LoadLocation("UTC")
 	userToday := timezone.GetUserToday(loc)
 
-	// 1. Test invalid lookback (> 3 days ago)
-	tooOldDate := userToday.AddDate(0, 0, -5).Format("2006-01-02")
-	_, errOld := invService.RedeemRestoreShield(context.Background(), userID, tooOldDate, "Push", 1.0, loc)
-	if errOld == nil {
-		t.Errorf("expected error for date older than 3 days ago (%s), but got none", tooOldDate)
+	// 1. Test future/today rejection
+	todayStr := userToday.Format("2006-01-02")
+	_, errToday := invService.RedeemRestoreShield(context.Background(), userID, []string{todayStr}, "Push", 1.0, loc)
+	if errToday == nil {
+		t.Errorf("expected error for today's date (%s), but got none", todayStr)
 	}
 
-	// 2. Test valid lookback (Yesterday = 1 day ago)
-	yesterday := userToday.AddDate(0, 0, -1).Format("2006-01-02")
-	res, errValid := invService.RedeemRestoreShield(context.Background(), userID, yesterday, "Push", 1.0, loc)
+	// 2. Test insufficient shields: 3 days missed, only 2 available
+	dates3 := []string{
+		userToday.AddDate(0, 0, -3).Format("2006-01-02"),
+		userToday.AddDate(0, 0, -2).Format("2006-01-02"),
+		userToday.AddDate(0, 0, -1).Format("2006-01-02"),
+	}
+	_, errInsuff := invService.RedeemRestoreShield(context.Background(), userID, dates3, "Push", 1.0, loc)
+	if errInsuff == nil {
+		t.Errorf("expected error for insufficient shields (3 needed, 2 available), got none")
+	}
+
+	// 3. Test successful 2-day restore with 2 shields
+	dates2 := []string{
+		userToday.AddDate(0, 0, -2).Format("2006-01-02"),
+		userToday.AddDate(0, 0, -1).Format("2006-01-02"),
+	}
+	res, errValid := invService.RedeemRestoreShield(context.Background(), userID, dates2, "Push", 1.0, loc)
 	if errValid != nil {
-		t.Fatalf("unexpected error redeeming restore shield for yesterday (%s): %v", yesterday, errValid)
+		t.Fatalf("unexpected error redeeming restore shields: %v", errValid)
 	}
 
 	if !res.Success {
 		t.Errorf("expected successful redemption result")
 	}
-	if res.ShieldsRemaining != 1 {
-		t.Errorf("expected 1 remaining shield, got %d", res.ShieldsRemaining)
+	if res.ShieldsConsumed != 2 {
+		t.Errorf("expected 2 shields consumed, got %d", res.ShieldsConsumed)
+	}
+	if res.ShieldsRemaining != 0 {
+		t.Errorf("expected 0 remaining shields, got %d", res.ShieldsRemaining)
 	}
 }

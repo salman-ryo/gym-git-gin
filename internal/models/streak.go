@@ -46,11 +46,15 @@ type AccuracyBreakdown struct {
 
 // StreakBrokenEvent represents lifecycle event data returned when a user's streak breaks
 type StreakBrokenEvent struct {
-	PreviousStreak         int    `json:"previous_streak"`
-	BrokenOn               string `json:"broken_on"`
-	RestoreShieldAvailable bool   `json:"restore_shield_available"`
-	RestoreShieldsCount    int    `json:"restore_shields_count"`
-	CanRestoreUntil        string `json:"can_restore_until"`
+	PreviousStreak         int      `json:"previous_streak"`
+	LastStreakDate         string   `json:"last_streak_date"`
+	BrokenOn               string   `json:"broken_on"`
+	MissedDaysCount        int      `json:"missed_days_count"`
+	RequiredShields        int      `json:"required_shields"`
+	RestoreShieldAvailable bool     `json:"restore_shield_available"`
+	RestoreShieldsCount    int      `json:"restore_shields_count"`
+	MissedDates            []string `json:"missed_dates"`
+	CanRestoreUntil        string   `json:"can_restore_until"`
 }
 
 // StreakWarningEvent represents real-time risk alert data returned when streak is at risk

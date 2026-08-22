@@ -68,18 +68,21 @@ type UseItemResult struct {
 
 // RestoreShieldRequest represents the HTTP payload for POST /api/v1/streak/restore
 type RestoreShieldRequest struct {
-	TargetDate  string     `json:"target_date" binding:"required"` // YYYY-MM-DD
-	WorkoutType string     `json:"workout_type,omitempty"`
-	Hours       float64    `json:"hours,omitempty"`
+	TargetDate  string   `json:"target_date,omitempty"`  // Legacy single-date fallback
+	TargetDates []string `json:"target_dates,omitempty"` // Multi-day array of dates to restore
+	WorkoutType string   `json:"workout_type,omitempty"`
+	Hours       float64  `json:"hours,omitempty"`
 }
 
-// RestoreShieldResult represents the result of redeeming a Restore Shield
+// RestoreShieldResult represents the result of redeeming Restore Shield(s)
 type RestoreShieldResult struct {
-	Success            bool   `json:"success"`
-	RestoredDate       string `json:"restored_date"`
-	NewCurrentStreak   int    `json:"new_current_streak"`
-	ShieldsRemaining   int    `json:"shields_remaining"`
-	Message            string `json:"message"`
+	Success          bool     `json:"success"`
+	RestoredDate     string   `json:"restored_date,omitempty"`
+	RestoredDates    []string `json:"restored_dates,omitempty"`
+	ShieldsConsumed  int      `json:"shields_consumed"`
+	ShieldsRemaining int      `json:"shields_remaining"`
+	NewCurrentStreak int      `json:"new_current_streak"`
+	Message          string   `json:"message"`
 }
 
 // MilestoneReward represents an item reward granted for achieving a streak milestone

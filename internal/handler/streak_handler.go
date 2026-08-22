@@ -41,7 +41,7 @@ func (h *StreakHandler) GetStreak(c *gin.Context) {
 	models.SendSuccess(c, http.StatusOK, streakState, "Streak state retrieved successfully")
 }
 
-// RestoreStreak redeems a Restore Shield to revive a missed streak day within 3 days lookback
+// RestoreStreak redeems Restore Shield(s) to revive missed streak day(s)
 func (h *StreakHandler) RestoreStreak(c *gin.Context) {
 	userID, ok := middleware.GetResolvedUserID(c)
 	if !ok {
@@ -49,14 +49,26 @@ func (h *StreakHandler) RestoreStreak(c *gin.Context) {
 	}
 
 	var req models.RestoreShieldRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.TargetDate == "" {
-		models.SendError(c, http.StatusBadRequest, "BAD_REQUEST", "Invalid request payload; target_date is required", nil)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		models.SendError(c, http.StatusBadRequest, "BAD_REQUEST", "Invalid request payload", nil)
+		return
+	}
+
+	var targetDates []string
+	if len(req.TargetDates) > 0 {
+		targetDates = req.TargetDates
+	} else if req.TargetDate != "" {
+		targetDates = []string{req.TargetDate}
+	}
+
+	if len(targetDates) == 0 {
+		models.SendError(c, http.StatusBadRequest, "BAD_REQUEST", "target_dates is required", nil)
 		return
 	}
 
 	loc := middleware.GetUserLocationFromContext(c)
 
-	result, err := h.inventoryService.RedeemRestoreShield(c.Request.Context(), userID, req.TargetDate, req.WorkoutType, req.Hours, loc)
+	result, err := h.inventoryService.RedeemRestoreShield(c.Request.Context(), userID, targetDates, req.WorkoutType, req.Hours, loc)
 	if err != nil {
 		models.SendError(c, http.StatusBadRequest, "RESTORE_FAILED", err.Error(), nil)
 		return

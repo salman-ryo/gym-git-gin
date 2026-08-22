@@ -80,9 +80,9 @@ func (r *postgresInventoryRepository) AddItemQuantity(ctx context.Context, userI
 	}
 	query := `
 		INSERT INTO user_inventories (user_id, item_id, quantity)
-		VALUES ($1, $2, $3)
+		VALUES ($1, $2, LEAST(9, $3))
 		ON CONFLICT (user_id, item_id) DO UPDATE SET
-			quantity = user_inventories.quantity + EXCLUDED.quantity,
+			quantity = LEAST(9, user_inventories.quantity + EXCLUDED.quantity),
 			updated_at = NOW()
 		RETURNING quantity
 	`

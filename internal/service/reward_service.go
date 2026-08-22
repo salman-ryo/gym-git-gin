@@ -228,6 +228,11 @@ func (s *rewardService) ClaimReward(ctx context.Context, userID uuid.UUID, planI
 		return nil, fmt.Errorf("failed granting item reward to inventory: %w", err)
 	}
 
+	msg := fmt.Sprintf("Successfully claimed %dx %s for hitting %d days streak!", targetMilestone.Quantity, item.Name, streakTarget)
+	if newQty >= 9 {
+		msg += " (Inventory capacity at maximum: 9)"
+	}
+
 	return &models.ClaimRewardResult{
 		Success:            true,
 		StreakTarget:       streakTarget,
@@ -236,7 +241,7 @@ func (s *rewardService) ClaimReward(ctx context.Context, userID uuid.UUID, planI
 		QuantityAwarded:    targetMilestone.Quantity,
 		RemainingInventory: newQty,
 		ClaimedAt:          claim.ClaimedAt,
-		Message:            fmt.Sprintf("Successfully claimed %dx %s for hitting %d days streak!", targetMilestone.Quantity, item.Name, streakTarget),
+		Message:            msg,
 	}, nil
 }
 

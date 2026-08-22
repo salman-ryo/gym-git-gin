@@ -12,6 +12,10 @@ import (
 	"github.com/google/uuid"
 )
 
+func strPtr(s string) *string {
+	return &s
+}
+
 type mockUserRepo struct {
 	user *models.User
 }
@@ -272,6 +276,160 @@ func TestStreakService_StreakWarningAndBrokenEvents(t *testing.T) {
 
 	if !activeResp.StreakWarningEvent.IsAtRisk {
 		t.Errorf("expected IsAtRisk to be true for active streak")
+	}
+}
+
+func TestStreak_TodayUnlogged_DoesNotBreakStreak(t *testing.T) {
+	userID := uuid.New()
+	user := &models.User{
+		ID:           userID,
+		WeeklyPlanID: strPtr("ppl-standard"),
+		Timezone:     "UTC",
+	}
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:         "ppl-standard",
+				Name:       "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Rest"},
+			},
+		},
+	}
+
+	loc := time.UTC
+	today := timezone.GetUserToday(loc)
+
+	// User logged yesterday and 4 preceding days. Today is completely unlogged.
+	var logs []models.GymLog
+	for i := 1; i <= 5; i++ {
+		logs = append(logs, models.GymLog{
+			UserID:      userID,
+			Date:        today.AddDate(0, 0, -i).Format("2006-01-02"),
+			Hours:       1.0,
+			WorkoutType: "Push",
+		})
+	}
+	logRepo := &mockLogRepo{logs: logs}
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:          userID,
+			CurrentStreak:   5,
+			LongestStreak:   5,
+			CycleStartDate:  today.AddDate(0, 0, -3).Format("2006-01-02"),
+			CycleEndDate:    today.AddDate(0, 0, 3).Format("2006-01-02"),
+			RestTokensTotal: 3,
+			RestTokensUsed:  0,
+			IsFrozen:        false,
+		},
+	}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Active streak must NOT be 0 simply because today is not yet logged!
+	if resp.CurrentStreak < 5 {
+		t.Errorf("expected CurrentStreak to be at least 5 (alive from yesterday), got %d", resp.CurrentStreak)
+	}
+
+	// Must NOT fire a StreakBrokenEvent
+	if resp.StreakBrokenEvent != nil {
+		t.Errorf("expected StreakBrokenEvent to be nil during in-progress today, but got non-nil")
+	}
+}
+
+func TestStreak_LastStreakDate_5DaysGap(t *testing.T) {
+	userID := uuid.New()
+	user := &models.User{
+		ID:           userID,
+		WeeklyPlanID: strPtr("ppl-standard"),
+		Timezone:     "UTC",
+	}
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:         "ppl-standard",
+				Name:       "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Cardio", "Upper", "Lower"},
+			},
+		},
+	}
+
+	loc := time.UTC
+	today := timezone.GetUserToday(loc)
+
+	// User last logged a workout 5 days ago (and 9 days before that = 10 day streak)
+	var logs []models.GymLog
+	for i := 5; i <= 14; i++ {
+		logs = append(logs, models.GymLog{
+			UserID:      userID,
+			Date:        today.AddDate(0, 0, -i).Format("2006-01-02"),
+			Hours:       1.0,
+			WorkoutType: "Push",
+		})
+	}
+	logRepo := &mockLogRepo{logs: logs}
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:          userID,
+			CurrentStreak:   0,
+			LongestStreak:   10,
+			CycleStartDate:  today.AddDate(0, 0, -3).Format("2006-01-02"),
+			CycleEndDate:    today.AddDate(0, 0, 3).Format("2006-01-02"),
+			RestTokensTotal: 1,
+			RestTokensUsed:  1,
+			IsFrozen:        false,
+		},
+	}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.CurrentStreak != 0 {
+		t.Errorf("expected CurrentStreak to be 0 for 5-day inactive gap, got %d", resp.CurrentStreak)
+	}
+
+	if resp.StreakBrokenEvent == nil {
+		t.Fatalf("expected StreakBrokenEvent to be non-nil for broken streak")
+	}
+
+	// Scientific rolling window evaluates days -5, -6... as active.
+	// Day -4 and day -3 qualify as compliant rest days because active sessions in [D-6, D] >= required (5).
+	// On day -2, active sessions in window drop to 4 (< 5), so day -2 is the first non-compliant day.
+	// Hence, last compliant date is day -3 (2026-08-19), and missed dates are days -2 and -1 (2 missed days).
+	expectedLastStreakDate := today.AddDate(0, 0, -3).Format("2006-01-02")
+	if resp.StreakBrokenEvent.LastStreakDate != expectedLastStreakDate {
+		t.Errorf("expected LastStreakDate %s, got %s", expectedLastStreakDate, resp.StreakBrokenEvent.LastStreakDate)
+	}
+
+	if resp.StreakBrokenEvent.MissedDaysCount != 2 {
+		t.Errorf("expected MissedDaysCount 2 (days -2, -1), got %d", resp.StreakBrokenEvent.MissedDaysCount)
+	}
+
+	if resp.StreakBrokenEvent.RequiredShields != resp.StreakBrokenEvent.MissedDaysCount {
+		t.Errorf("expected RequiredShields to equal MissedDaysCount (%d), got %d", resp.StreakBrokenEvent.MissedDaysCount, resp.StreakBrokenEvent.RequiredShields)
+	}
+}
+
+func TestInventory_MaxItemLimit_9(t *testing.T) {
+	invRepo := &mockInventoryRepo{
+		quantities: map[string]int{"RESTORE_SHIELD": 8},
+	}
+
+	newQty, err := invRepo.AddItemQuantity(context.Background(), uuid.New(), "RESTORE_SHIELD", 3)
+	if err != nil {
+		t.Fatalf("unexpected error adding item quantity: %v", err)
+	}
+
+	if newQty != 9 {
+		t.Errorf("expected newQty to be capped at 9, got %d", newQty)
 	}
 }
 

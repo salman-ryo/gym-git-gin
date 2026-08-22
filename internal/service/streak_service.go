@@ -179,7 +179,7 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		state.AccuracyScore = accuracyBreakdown.AccuracyScore
 	}
 
-	// 6. Recalculate dynamic rolling streak
+	// 6. Recalculate dynamic rolling streak & latest workout log date
 	allLogs, errAll := s.logRepo.GetLogs(ctx, userID, nil, nil, nil)
 	if errAll == nil {
 		scientificStreak := CalculateScientificStreak(allLogs, targetDays, 30, userToday)
@@ -187,6 +187,17 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		if state.CurrentStreak > state.LongestStreak {
 			state.LongestStreak = state.CurrentStreak
 		}
+
+		var latestLogDate *string
+		for _, l := range allLogs {
+			if l.Hours > 0 && !strings.EqualFold(l.WorkoutType, "Rest") {
+				if latestLogDate == nil || l.Date > *latestLogDate {
+					d := l.Date
+					latestLogDate = &d
+				}
+			}
+		}
+		state.LastLoggedDate = latestLogDate
 	}
 
 	// 7. Persist updated streak state
@@ -235,20 +246,33 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 
 	// 9. Calculate Streak Broken Event
 	if state.CurrentStreak == 0 && state.LongestStreak > 0 && !state.IsFrozen {
-		shieldsCount := 0
-		if s.inventoryRepo != nil {
-			shieldsCount, _ = s.inventoryRepo.GetItemQuantity(ctx, userID, "RESTORE_SHIELD")
-		}
+		gapAnalysis := FindLastStreakDateAndGap(allLogs, targetDays, userToday)
+		if gapAnalysis.MissedDaysCount > 0 {
+			shieldsCount := 0
+			if s.inventoryRepo != nil {
+				shieldsCount, _ = s.inventoryRepo.GetItemQuantity(ctx, userID, "RESTORE_SHIELD")
+			}
 
-		yesterdayStr := userToday.AddDate(0, 0, -1).Format("2006-01-02")
-		canRestoreUntil := userToday.Format("2006-01-02")
+			canRestore := shieldsCount >= gapAnalysis.MissedDaysCount && gapAnalysis.MissedDaysCount <= 9
+			firstBrokenDate := gapAnalysis.MissedDates[0]
+			canRestoreUntil := userToday.Format("2006-01-02")
 
-		brokenEvent = &models.StreakBrokenEvent{
-			PreviousStreak:         state.LongestStreak,
-			BrokenOn:               yesterdayStr,
-			RestoreShieldAvailable: shieldsCount > 0,
-			RestoreShieldsCount:    shieldsCount,
-			CanRestoreUntil:        canRestoreUntil,
+			prevStreak := gapAnalysis.PreviousStreak
+			if prevStreak == 0 {
+				prevStreak = state.LongestStreak
+			}
+
+			brokenEvent = &models.StreakBrokenEvent{
+				PreviousStreak:         prevStreak,
+				LastStreakDate:         gapAnalysis.LastStreakDate,
+				BrokenOn:               firstBrokenDate,
+				MissedDaysCount:        gapAnalysis.MissedDaysCount,
+				RequiredShields:        gapAnalysis.MissedDaysCount,
+				RestoreShieldAvailable: canRestore,
+				RestoreShieldsCount:    shieldsCount,
+				MissedDates:            gapAnalysis.MissedDates,
+				CanRestoreUntil:        canRestoreUntil,
+			}
 		}
 	}
 

@@ -85,18 +85,29 @@ func (s *inventoryService) UseItem(ctx context.Context, userID uuid.UUID, itemID
 	// 1. Instant Use Items
 	if item.EffectType == models.EffectTypeInstantUse {
 		if itemID == "RESTORE_SHIELD" {
-			targetDate, _ := payload["target_date"].(string)
+			var targetDates []string
+			if tdList, ok := payload["target_dates"].([]interface{}); ok {
+				for _, td := range tdList {
+					if str, isStr := td.(string); isStr && str != "" {
+						targetDates = append(targetDates, str)
+					}
+				}
+			} else if tdListStr, ok := payload["target_dates"].([]string); ok {
+				targetDates = tdListStr
+			} else if singleDate, ok := payload["target_date"].(string); ok && singleDate != "" {
+				targetDates = []string{singleDate}
+			}
 			workoutType, _ := payload["workout_type"].(string)
 			hours, _ := payload["hours"].(float64)
 
-			res, err := s.RedeemRestoreShield(ctx, userID, targetDate, workoutType, hours, loc)
+			res, err := s.RedeemRestoreShield(ctx, userID, targetDates, workoutType, hours, loc)
 			if err != nil {
 				return nil, err
 			}
 			remQty, _ := s.inventoryRepo.GetItemQuantity(ctx, userID, itemID)
 			return &models.UseItemResult{
 				ItemID:             itemID,
-				QuantityConsumed:   1,
+				QuantityConsumed:   res.ShieldsConsumed,
 				RemainingQuantity:  remQty,
 				EffectType:         item.EffectType,
 				Details:            res.Message,
@@ -175,9 +186,12 @@ func (s *inventoryService) UseItem(ctx context.Context, userID uuid.UUID, itemID
 }
 
 
-func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.UUID, targetDate string, workoutType string, hours float64, loc *time.Location) (*models.RestoreShieldResult, error) {
-	if targetDate == "" {
-		return nil, fmt.Errorf("target_date is required for Restore Shield redemption")
+func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.UUID, targetDates []string, workoutType string, hours float64, loc *time.Location) (*models.RestoreShieldResult, error) {
+	if len(targetDates) == 0 {
+		return nil, fmt.Errorf("target_dates is required for Restore Shield redemption")
+	}
+	if len(targetDates) > 9 {
+		return nil, fmt.Errorf("cannot restore more than 9 days at once (exceeds max capacity of 9 shields)")
 	}
 
 	if loc == nil {
@@ -186,23 +200,22 @@ func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.
 	userToday := timezone.GetUserToday(loc)
 	todayStr := userToday.Format("2006-01-02")
 
-	// Lookback Window Check: targetDate must be past date within 3 days (Yesterday, 2 days ago, 3 days ago)
-	if targetDate >= todayStr {
-		return nil, fmt.Errorf("Restore Shield can only be redeemed on past missed days, not today or future dates")
+	// Validate that all target dates are past dates
+	for _, d := range targetDates {
+		if d >= todayStr {
+			return nil, fmt.Errorf("Restore Shield can only be redeemed on past missed days, not today (%s) or future dates (%s)", todayStr, d)
+		}
 	}
 
-	minAllowedDate := userToday.AddDate(0, 0, -3).Format("2006-01-02")
-	if targetDate < minAllowedDate {
-		return nil, fmt.Errorf("Restore Shield lookback window expired: target date %s is older than the allowed 3-day window (%s)", targetDate, minAllowedDate)
-	}
+	neededShields := len(targetDates)
 
 	// Check Restore Shield inventory balance
 	qty, err := s.inventoryRepo.GetItemQuantity(ctx, userID, "RESTORE_SHIELD")
 	if err != nil {
 		return nil, fmt.Errorf("failed verifying Restore Shield balance: %w", err)
 	}
-	if qty < 1 {
-		return nil, fmt.Errorf("no Restore Shield items available in inventory")
+	if qty < neededShields {
+		return nil, fmt.Errorf("insufficient Restore Shields: %d required to restore %d missed days, but you have %d", neededShields, neededShields, qty)
 	}
 
 	if workoutType == "" {
@@ -212,29 +225,32 @@ func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.
 		hours = 1.0
 	}
 
-	// Create/upsert historical workout log for targetDate
-	log := &models.GymLog{
-		UserID:      userID,
-		Date:        targetDate,
-		Hours:       hours,
-		WorkoutType: workoutType,
-		IsRestored:  true,
-	}
-	if err := s.logRepo.UpsertLog(ctx, log); err != nil {
-		return nil, fmt.Errorf("failed saving restored workout log: %w", err)
+	// Create/upsert historical workout logs for each targetDate
+	for _, d := range targetDates {
+		log := &models.GymLog{
+			UserID:      userID,
+			Date:        d,
+			Hours:       hours,
+			WorkoutType: workoutType,
+			IsRestored:  true,
+		}
+		if err := s.logRepo.UpsertLog(ctx, log); err != nil {
+			return nil, fmt.Errorf("failed saving restored workout log for %s: %w", d, err)
+		}
 	}
 
-	// Deduct 1 RESTORE_SHIELD from inventory
-	remQty, err := s.inventoryRepo.DeductItemQuantity(ctx, userID, "RESTORE_SHIELD", 1)
+	// Deduct neededShields from inventory
+	remQty, err := s.inventoryRepo.DeductItemQuantity(ctx, userID, "RESTORE_SHIELD", neededShields)
 	if err != nil {
-		return nil, fmt.Errorf("failed deducting Restore Shield from inventory: %w", err)
+		return nil, fmt.Errorf("failed deducting Restore Shields from inventory: %w", err)
 	}
 
 	// Recalculate streak
 	allLogs, errLogs := s.logRepo.GetLogs(ctx, userID, nil, nil, nil)
 	newStreak := 0
 	if errLogs == nil {
-		streakStats := CalculateScientificStreak(allLogs, 4, 30, userToday)
+		targetDays := 4
+		streakStats := CalculateScientificStreak(allLogs, targetDays, 30, userToday)
 		newStreak = streakStats.CurrentStreak
 
 		state, _ := s.streakRepo.GetByUserID(ctx, userID)
@@ -247,12 +263,19 @@ func (s *inventoryService) RedeemRestoreShield(ctx context.Context, userID uuid.
 		}
 	}
 
+	primaryDate := targetDates[0]
+	if len(targetDates) > 1 {
+		primaryDate = fmt.Sprintf("%s to %s", targetDates[0], targetDates[len(targetDates)-1])
+	}
+
 	return &models.RestoreShieldResult{
 		Success:          true,
-		RestoredDate:     targetDate,
-		NewCurrentStreak: newStreak,
+		RestoredDate:     primaryDate,
+		RestoredDates:    targetDates,
+		ShieldsConsumed:  neededShields,
 		ShieldsRemaining: remQty,
-		Message:          fmt.Sprintf("Restore Shield redeemed successfully for %s! Active streak updated to %d days.", targetDate, newStreak),
+		NewCurrentStreak: newStreak,
+		Message:          fmt.Sprintf("Successfully redeemed %d Restore Shields for %d missed days! Active streak restored to %d days.", neededShields, neededShields, newStreak),
 	}, nil
 }
 
