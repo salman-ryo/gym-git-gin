@@ -107,9 +107,9 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		state.LastLoggedDate = &cleaned
 	}
 
-	// 4. Check Cycle Rollover if userToday > state.CycleEndDate
-	if todayStr > state.CycleEndDate {
-		// If a plan was queued, activate it now!
+	// 4. Check Cycle Rollover while userToday > state.CycleEndDate
+	for todayStr > state.CycleEndDate {
+		// If a plan was queued, activate it on rollover!
 		if user.QueuedWeeklyPlanID != nil && *user.QueuedWeeklyPlanID != "" {
 			newPlanID := *user.QueuedWeeklyPlanID
 			if err := s.userRepo.UpdateWeeklyPlan(ctx, userID, newPlanID); err == nil {
@@ -120,11 +120,14 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 				if activePlan != nil && len(activePlan.Categories) > 0 {
 					targetDays = CalculateTargetDaysPerWeek(activePlan.Categories)
 					totalRestTokens = 7 - targetDays
+					if totalRestTokens < 1 {
+						totalRestTokens = 1
+					}
 				}
 			}
 		}
 
-		// Roll over to new 7-day cycle
+		// Roll over to next 7-day cycle
 		cycleStart, parseErr := time.ParseInLocation("2006-01-02", state.CycleEndDate, loc)
 		if parseErr == nil {
 			cycleStart = cycleStart.AddDate(0, 0, 1)
@@ -141,34 +144,45 @@ func (s *streakService) GetStreakState(ctx context.Context, userID uuid.UUID, lo
 		state.RestTokensUsed = 0
 	}
 
+	// Always ensure target and total rest tokens are in sync with the active plan
+	state.WorkoutsTargetInCycle = targetDays
+	state.RestTokensTotal = totalRestTokens
+
 	// 5. Fetch logs for current cycle window
 	cStart, _ := time.ParseInLocation("2006-01-02", state.CycleStartDate, loc)
 	cEnd, _ := time.ParseInLocation("2006-01-02", state.CycleEndDate, loc)
 
 	logs, err := s.logRepo.GetLogs(ctx, userID, &cStart, &cEnd, nil)
 	if err == nil {
-		completed := 0
+		workoutDates := make(map[string]bool)
+		restDates := make(map[string]bool)
 		for _, l := range logs {
 			if l.Hours > 0 && !strings.EqualFold(l.WorkoutType, "Rest") {
-				completed++
+				workoutDates[l.Date] = true
+			} else if strings.EqualFold(l.WorkoutType, "Rest") {
+				restDates[l.Date] = true
 			}
 		}
-		state.WorkoutsCompletedInCycle = completed
+		state.WorkoutsCompletedInCycle = len(workoutDates)
 
-		// Calculate days elapsed in cycle up to today
-		daysElapsed := 0
-		if todayStr >= state.CycleStartDate && todayStr <= state.CycleEndDate {
-			tCur, _ := time.ParseInLocation("2006-01-02", todayStr, loc)
-			daysElapsed = int(tCur.Sub(cStart).Hours()/24) + 1
-		} else if todayStr > state.CycleEndDate {
-			daysElapsed = 7
+		// Calculate rest tokens used in cycle up to today:
+		// - Past closed days in cycle with no workout count as 1 rest day.
+		// - Today counts as rest only if explicitly logged as Rest.
+		restUsed := 0
+		for d := cStart; !d.After(userToday) && !d.After(cEnd); d = d.AddDate(0, 0, 1) {
+			dStr := d.Format("2006-01-02")
+			if workoutDates[dStr] {
+				continue
+			}
+			if dStr == todayStr {
+				if restDates[dStr] {
+					restUsed++
+				}
+			} else {
+				restUsed++
+			}
 		}
 
-		// Rest tokens used = daysElapsed - completed
-		restUsed := daysElapsed - completed
-		if restUsed < 0 {
-			restUsed = 0
-		}
 		if restUsed > state.RestTokensTotal {
 			restUsed = state.RestTokensTotal
 		}

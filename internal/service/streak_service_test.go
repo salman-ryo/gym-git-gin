@@ -241,9 +241,29 @@ func TestStreakService_StreakWarningAndBrokenEvents(t *testing.T) {
 	}
 
 	// 2. Test active streak at risk (CurrentStreak > 0 and 0 rest tokens remaining)
+	plan6 := &models.WeeklyPlan{
+		ID:         "six-day-split",
+		Name:       "Six Day Split",
+		Categories: []string{"Push", "Pull", "Legs", "Upper", "Lower", "Cardio"}, // 6 workouts -> 1 rest token
+	}
+	user6 := &models.User{
+		ID:           userID,
+		AuthUserID:   userID,
+		Email:        "test@gymgit.com",
+		WeeklyPlanID: strPtr("six-day-split"),
+		Timezone:     "America/New_York",
+	}
+	userRepo6 := &mockUserRepo{user: user6}
+	planRepo6 := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"six-day-split": plan6,
+		},
+	}
+
 	today := timezone.GetUserToday(loc)
+	// User worked out on days -2 through -10, but took yesterday (-1) as rest day
 	var activeLogs []models.GymLog
-	for i := 1; i <= 10; i++ {
+	for i := 2; i <= 10; i++ {
 		activeLogs = append(activeLogs, models.GymLog{
 			UserID:      userID,
 			Date:        today.AddDate(0, 0, -i).Format("2006-01-02"),
@@ -255,16 +275,16 @@ func TestStreakService_StreakWarningAndBrokenEvents(t *testing.T) {
 	activeStreakRepo := &mockStreakRepo{
 		state: &models.UserStreakState{
 			UserID:          userID,
-			CurrentStreak:   10,
+			CurrentStreak:   9,
 			LongestStreak:   15,
-			CycleStartDate:  today.AddDate(0, 0, -3).Format("2006-01-02"),
-			CycleEndDate:    today.AddDate(0, 0, 3).Format("2006-01-02"),
+			CycleStartDate:  today.AddDate(0, 0, -1).Format("2006-01-02"),
+			CycleEndDate:    today.AddDate(0, 0, 5).Format("2006-01-02"),
 			RestTokensTotal: 1,
 			RestTokensUsed:  1,
 			IsFrozen:        false,
 		},
 	}
-	activeStreakSvc := service.NewStreakService(activeStreakRepo, userRepo, planRepo, activeLogRepo, nil)
+	activeStreakSvc := service.NewStreakService(activeStreakRepo, userRepo6, planRepo6, activeLogRepo, nil)
 	activeResp, errActive := activeStreakSvc.GetStreakState(context.Background(), userID, loc)
 	if errActive != nil {
 		t.Fatalf("unexpected error: %v", errActive)
@@ -430,6 +450,198 @@ func TestInventory_MaxItemLimit_9(t *testing.T) {
 
 	if newQty != 9 {
 		t.Errorf("expected newQty to be capped at 9, got %d", newQty)
+	}
+}
+
+func TestStreakService_CycleRollover_SamePlanContinues(t *testing.T) {
+	userID := uuid.New()
+	user := &models.User{
+		ID:           userID,
+		WeeklyPlanID: strPtr("ppl-standard"),
+		Timezone:     "UTC",
+	}
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:         "ppl-standard",
+				Name:       "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Cardio"}, // 4 workouts -> 3 rest tokens
+			},
+		},
+	}
+
+	loc := time.UTC
+	today := timezone.GetUserToday(loc)
+	todayStr := today.Format("2006-01-02")
+
+	// Past state from previous week (ended yesterday)
+	pastEnd := today.AddDate(0, 0, -1)
+	pastStart := pastEnd.AddDate(0, 0, -6)
+
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:                   userID,
+			CurrentStreak:            5,
+			LongestStreak:            5,
+			CycleStartDate:           pastStart.Format("2006-01-02"),
+			CycleEndDate:             pastEnd.Format("2006-01-02"),
+			WorkoutsCompletedInCycle: 4,
+			WorkoutsTargetInCycle:   4,
+			RestTokensTotal:          3,
+			RestTokensUsed:           3,
+			IsFrozen:                 false,
+		},
+	}
+	logRepo := &mockLogRepo{}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// New cycle should start today
+	if resp.CycleInfo.CycleStartDate != todayStr {
+		t.Errorf("expected CycleStartDate to be %s, got %s", todayStr, resp.CycleInfo.CycleStartDate)
+	}
+
+	expectedEnd := today.AddDate(0, 0, 6).Format("2006-01-02")
+	if resp.CycleInfo.CycleEndDate != expectedEnd {
+		t.Errorf("expected CycleEndDate to be %s, got %s", expectedEnd, resp.CycleInfo.CycleEndDate)
+	}
+
+	// Same plan continues with fresh rest tokens!
+	if resp.CycleInfo.WorkoutsTargetInCycle != 4 {
+		t.Errorf("expected WorkoutsTargetInCycle to be 4, got %d", resp.CycleInfo.WorkoutsTargetInCycle)
+	}
+	if resp.CycleInfo.RestTokensTotal != 3 {
+		t.Errorf("expected RestTokensTotal to be 3, got %d", resp.CycleInfo.RestTokensTotal)
+	}
+	if resp.CycleInfo.RestTokensUsed != 0 {
+		t.Errorf("expected RestTokensUsed to be 0 for fresh cycle, got %d", resp.CycleInfo.RestTokensUsed)
+	}
+	if resp.CycleInfo.RestTokensRemaining != 3 {
+		t.Errorf("expected RestTokensRemaining to be 3, got %d", resp.CycleInfo.RestTokensRemaining)
+	}
+}
+
+func TestStreakService_CycleRollover_MultiWeekCatchup(t *testing.T) {
+	userID := uuid.New()
+	user := &models.User{
+		ID:           userID,
+		WeeklyPlanID: strPtr("ppl-standard"),
+		Timezone:     "UTC",
+	}
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:         "ppl-standard",
+				Name:       "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Cardio"},
+			},
+		},
+	}
+
+	loc := time.UTC
+	today := timezone.GetUserToday(loc)
+	todayStr := today.Format("2006-01-02")
+
+	// State is 3 weeks old (ended 21 days ago)
+	pastEnd := today.AddDate(0, 0, -21)
+	pastStart := pastEnd.AddDate(0, 0, -6)
+
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:                   userID,
+			CurrentStreak:            0,
+			LongestStreak:            10,
+			CycleStartDate:           pastStart.Format("2006-01-02"),
+			CycleEndDate:             pastEnd.Format("2006-01-02"),
+			WorkoutsCompletedInCycle: 0,
+			WorkoutsTargetInCycle:   4,
+			RestTokensTotal:          3,
+			RestTokensUsed:           0,
+			IsFrozen:                 false,
+		},
+	}
+	logRepo := &mockLogRepo{}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Current cycle must encompass today
+	if todayStr < resp.CycleInfo.CycleStartDate || todayStr > resp.CycleInfo.CycleEndDate {
+		t.Errorf("expected today (%s) to be within cycle [%s, %s]", todayStr, resp.CycleInfo.CycleStartDate, resp.CycleInfo.CycleEndDate)
+	}
+}
+
+func TestStreakService_TodayInProgress_DoesNotConsumeRestToken(t *testing.T) {
+	userID := uuid.New()
+	user := &models.User{
+		ID:           userID,
+		WeeklyPlanID: strPtr("ppl-standard"),
+		Timezone:     "UTC",
+	}
+	userRepo := &mockUserRepo{user: user}
+	planRepo := &mockPlanRepo{
+		plans: map[string]*models.WeeklyPlan{
+			"ppl-standard": {
+				ID:         "ppl-standard",
+				Name:       "PPL Standard",
+				Categories: []string{"Push", "Pull", "Legs", "Cardio"}, // 4 workouts -> 3 rest tokens
+			},
+		},
+	}
+
+	loc := time.UTC
+	today := timezone.GetUserToday(loc)
+
+	// Cycle started yesterday. User worked out yesterday. Today is unlogged (in-progress morning).
+	cStart := today.AddDate(0, 0, -1)
+	cEnd := cStart.AddDate(0, 0, 6)
+
+	streakRepo := &mockStreakRepo{
+		state: &models.UserStreakState{
+			UserID:                   userID,
+			CurrentStreak:            1,
+			LongestStreak:            1,
+			CycleStartDate:           cStart.Format("2006-01-02"),
+			CycleEndDate:             cEnd.Format("2006-01-02"),
+			WorkoutsCompletedInCycle: 1,
+			WorkoutsTargetInCycle:   4,
+			RestTokensTotal:          3,
+			RestTokensUsed:           0,
+			IsFrozen:                 false,
+		},
+	}
+	logRepo := &mockLogRepo{
+		logs: []models.GymLog{
+			{
+				UserID:      userID,
+				Date:        cStart.Format("2006-01-02"),
+				Hours:       1.0,
+				WorkoutType: "Push",
+			},
+		},
+	}
+
+	streakSvc := service.NewStreakService(streakRepo, userRepo, planRepo, logRepo, nil)
+	resp, err := streakSvc.GetStreakState(context.Background(), userID, loc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 1 workout done yesterday, today is in-progress -> 0 rest tokens used so far!
+	if resp.CycleInfo.RestTokensUsed != 0 {
+		t.Errorf("expected 0 RestTokensUsed on in-progress day, got %d", resp.CycleInfo.RestTokensUsed)
+	}
+	if resp.CycleInfo.RestTokensRemaining != 3 {
+		t.Errorf("expected 3 RestTokensRemaining, got %d", resp.CycleInfo.RestTokensRemaining)
 	}
 }
 
